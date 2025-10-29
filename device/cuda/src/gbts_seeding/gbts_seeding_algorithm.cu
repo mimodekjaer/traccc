@@ -869,7 +869,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     // 8. convert to 3sp seeds and make output buffer
 
     edm::seed_collection::buffer output_seeds(
-        ctx.nSeeds, m_mr.main, vecmem::data::buffer_type::resizable);
+        nProps, m_mr.main, vecmem::data::buffer_type::resizable);
     m_copy.get().setup(output_seeds)->ignore();
 
     kernels::gbts_seed_conversion_kernel<<<nBlocks, nThreads, 0, stream>>>(
