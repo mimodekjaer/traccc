@@ -29,6 +29,7 @@
 #include "traccc/options/track_gbts_seeding.hpp"
 #include "traccc/options/track_propagation.hpp"
 #include "traccc/options/track_seeding.hpp"
+#include "traccc/options/track_gbts_seeding.hpp"
 
 // I/O include(s).
 #include "traccc/io/read_cells.hpp"
@@ -93,7 +94,7 @@ int throughput_mt(std::string_view description, int argc, char* argv[]) {
         argc,
         argv,
         prelogger->cloneWithSuffix("Options")};
-
+    
     TRACCC_LOCAL_LOGGER(
         prelogger->clone(std::nullopt, traccc::Logging::Level(logging_opts)));
 
