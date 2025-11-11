@@ -43,8 +43,7 @@ TRACCC_THREAD_STEP=${TRACCC_THREAD_STEP:-1}
 TRACCC_REPETITIONS=${TRACCC_REPETITIONS:-5}
 TRACCC_CSV_FILE=${TRACCC_CSV_FILE:-"output.csv"}
 TRACCC_THROUGPUT_TYPE=${TRACCC_THROUGPUT_TYPE:-"traccc"}
-TRACCC_USE_GBTS=${TRACCC_USE_GBTS:="false"}
-while getopts ":x:i:m:t:r:c:y:g:h" opt; do
+while getopts ":x:i:m:t:r:c:y:h" opt; do
    case $opt in
       x)
          TRACCC_EXECUTABLE=$OPTARG
@@ -69,9 +68,6 @@ while getopts ":x:i:m:t:r:c:y:g:h" opt; do
          ;;
       y)
          TRACCC_THROUGPUT_TYPE=$OPTARG
-         ;;
-      g)
-	 TRACCC_USE_GBTS=$OPTARG
          ;;
       h)
          usage
@@ -100,7 +96,6 @@ echo "   THREAD_STEP     : ${TRACCC_THREAD_STEP}"
 echo "   REPETITIONS     : ${TRACCC_REPETITIONS}"
 echo "   CSV_FILE        : ${TRACCC_CSV_FILE}"
 echo "   THROUGHPUT_TYPE : ${TRACCC_THROUGPUT_TYPE}"
-echo "   USE_GBTS        : ${TRACCC_USE_GBTS}"
 
 # Check whether the output file already exists. Refuse to overwrite existing
 # files.

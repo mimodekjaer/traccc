@@ -37,8 +37,9 @@ full_chain_algorithm::full_chain_algorithm(
     const seedfinder_config& finder_config,
     const spacepoint_grid_config& grid_config,
     const seedfilter_config& filter_config,
-    const gbts_seedfinder_config& gbts_config,
-    const track_params_estimation_config& track_params_estimation_config,
+	const gbts_seedfinder_config& gbts_config,
+
+	const track_params_estimation_config& track_params_estimation_config,
     const finding_algorithm::config_type& finding_config,
     const fitting_algorithm::config_type& fitting_config,
     const detector_design_description::host& det_descr,
@@ -86,12 +87,12 @@ full_chain_algorithm::full_chain_algorithm(
       m_spacepoint_formation({m_cached_device_mr, &m_cached_pinned_host_mr},
                              m_copy, m_stream,
                              logger->cloneWithSuffix("SpFormationAlg")),
-      m_seeding(finder_config, grid_config, filter_config,
-                {m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy,
-                m_stream, logger->cloneWithSuffix("SeedingAlg")),
-      m_gbts_seeding(gbts_config,
-                     {m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy,
-                     m_stream, logger->cloneWithSuffix("GbtsAlg")),
+	  m_seeding(finder_config, grid_config, filter_config,
+		{m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy,
+		m_stream, logger->cloneWithSuffix("SeedingAlg")),
+	  m_gbts_seeding(gbts_config,
+		{m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy,
+		m_stream, logger->cloneWithSuffix("GbtsAlg")),
       m_track_parameter_estimation(
           track_params_estimation_config,
           {m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy, m_stream,
@@ -104,7 +105,7 @@ full_chain_algorithm::full_chain_algorithm(
       m_finder_config(finder_config),
       m_grid_config(grid_config),
       m_filter_config(filter_config),
-      m_gbts_config(gbts_config),
+	  m_gbts_config(gbts_config),
       m_track_params_estimation_config(track_params_estimation_config),
       m_finding_config(finding_config),
       m_fitting_config(fitting_config),
@@ -192,7 +193,7 @@ full_chain_algorithm::full_chain_algorithm(const full_chain_algorithm& parent)
       m_finder_config(parent.m_finder_config),
       m_grid_config(parent.m_grid_config),
       m_filter_config(parent.m_filter_config),
-      m_gbts_config(parent.m_gbts_config),
+	  m_gbts_config(parent.m_gbts_config),
       m_track_params_estimation_config(parent.m_track_params_estimation_config),
       m_finding_config(parent.m_finding_config),
       m_fitting_config(parent.m_fitting_config),
@@ -229,16 +230,17 @@ full_chain_algorithm::output_type full_chain_algorithm::operator()(
         const spacepoint_formation_algorithm::output_type spacepoints =
             m_spacepoint_formation(m_device_detector, measurements);
 
-        triplet_seeding_algorithm::output_type seeds;
-        if(usingGBTS) {
-            seeds = m_gbts_seeding(spacepoints, measurements);
-        }
-        else {
-            seeds = m_seeding(spacepoints);
-        }
-        const seed_parameter_estimation_algorithm::output_type track_params =
-                m_track_parameter_estimation(m_field, measurements, spacepoints,
-                                                                            seeds);
+				seeding_algorithm::output_type seeds;
+
+				if(usingGBTS) {
+					seeds = m_gbts_seeding(spacepoints, measurements);
+				}
+				else {
+					seeds = m_seeding(spacepoints);
+				}
+				const seed_parameter_estimation_algorithm::output_type track_params =
+						m_track_parameter_estimation(m_field, measurements, spacepoints,
+																				 seeds);
 
         // Run the track finding (asynchronously).
         const finding_algorithm::output_type track_candidates =
