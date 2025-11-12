@@ -28,7 +28,6 @@
 #include "traccc/options/track_gbts_seeding.hpp"
 #include "traccc/options/track_propagation.hpp"
 #include "traccc/options/track_seeding.hpp"
-#include "traccc/options/track_gbts_seeding.hpp"
 
 // I/O include(s).
 #include "traccc/io/read_cells.hpp"
@@ -135,7 +134,6 @@ int throughput_st(std::string_view description, int argc, char* argv[]) {
     const traccc::seedfilter_config seedfilter_config(seeding_opts);
     const traccc::spacepoint_grid_config spacepoint_grid_config(seeding_opts);
 	traccc::gbts_seedfinder_config gbts_config;
-
 	const traccc::track_params_estimation_config track_params_estimation_config;
 
     traccc::gbts_seedfinder_config gbts_config;

@@ -47,15 +47,7 @@ full_chain_algorithm::full_chain_algorithm(
       m_track_params_estimation_config(track_params_estimation_config),
       m_finding_config(finding_config),
       m_fitting_config(fitting_config),
-      usingGBTS(useGBTS) {
-
-    if (usingGBTS) {
-        TRACCC_LOCAL_LOGGER(std::move(logger));
-        TRACCC_ERROR(
-            "GBTS not implemented for CPU, this will run with "
-            "triplet seeding");
-    }
-}
+      usingGBTS(useGBTS) {}
 
 full_chain_algorithm::output_type full_chain_algorithm::operator()(
     const edm::silicon_cell_collection::host& cells) const {

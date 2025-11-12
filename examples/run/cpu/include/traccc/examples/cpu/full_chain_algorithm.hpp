@@ -86,7 +86,6 @@ class full_chain_algorithm
         const magnetic_field& field, const host_detector* detector,
         std::unique_ptr<const traccc::Logger> logger,
         const bool useGBTS = false);
-
     /// Reconstruct track parameters in the entire detector
     ///
     /// @param cells The cells for every detector module in the event
@@ -150,7 +149,6 @@ class full_chain_algorithm
     seedfilter_config m_filter_config;
 	/// placeholder GBTS config
 	gbts_seedfinder_config m_gbts_config;
-
     /// Configuration for track parameter estimation
     track_params_estimation_config m_track_params_estimation_config;
 
@@ -158,8 +156,8 @@ class full_chain_algorithm
     finding_algorithm::config_type m_finding_config;
     /// Configuration for the track fitting
     fitting_algorithm::config_type m_fitting_config;
-	
-	const bool usingGBTS;
+
+    const bool usingGBTS;
 
     const bool usingGBTS;
 
