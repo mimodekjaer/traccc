@@ -26,6 +26,7 @@ full_chain_algorithm::full_chain_algorithm(
     const gbts_seedfinder_config& gbts_config,
     const track_params_estimation_config& track_params_estimation_config,
     const finding_algorithm::config_type& finding_config,
+	const finding_algorithm::config_type& finding_config,
     const fitting_algorithm::config_type& fitting_config,
     const detector_design_description::host& det_descr,
     const detector_conditions_description::host& det_cond,
@@ -94,8 +95,8 @@ full_chain_algorithm::full_chain_algorithm(
       m_gbts_config(gbts_config),
       m_track_params_estimation_config(track_params_estimation_config),
       m_finding_config(finding_config),
-      m_fitting_config(fitting_config),
-      usingGBTS(useGBTS) {
+	  m_finding_config(finding_config),
+      m_fitting_config(fitting_config) {
 
     if (usingGBTS) {
         TRACCC_LOCAL_LOGGER(std::move(logger));
@@ -188,8 +189,8 @@ full_chain_algorithm::full_chain_algorithm(const full_chain_algorithm& parent)
       m_gbts_config(parent.m_gbts_config),
       m_track_params_estimation_config(parent.m_track_params_estimation_config),
       m_finding_config(parent.m_finding_config),
-      m_fitting_config(parent.m_fitting_config),
-      usingGBTS(parent.usingGBTS) {
+	  m_finding_config(parent.m_finding_config),
+      m_fitting_config(parent.m_fitting_config) {
 
     // Copy the detector (description) to the device.
     m_vecmem_objects.async_copy().setup(m_device_det_descr)->wait();
