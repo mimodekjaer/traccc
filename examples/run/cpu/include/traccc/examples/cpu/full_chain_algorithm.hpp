@@ -84,8 +84,8 @@ class full_chain_algorithm
         const detector_design_description::host& det_descr,
         const detector_conditions_description::host& det_cond,
         const magnetic_field& field, const host_detector* detector,
-        std::unique_ptr<const traccc::Logger> logger,
-        const bool useGBTS = false);
+        std::unique_ptr<const traccc::Logger> logger, const bool useGBTS);
+
     /// Reconstruct track parameters in the entire detector
     ///
     /// @param cells The cells for every detector module in the event
