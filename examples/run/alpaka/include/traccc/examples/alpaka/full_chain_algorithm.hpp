@@ -88,7 +88,8 @@ class full_chain_algorithm
         const detector_design_description::host& det_descr,
         const detector_conditions_description::host& det_cond,
         const magnetic_field& field, host_detector* detector,
-        std::unique_ptr<const traccc::Logger> logger, bool useGBTS = false);
+        std::unique_ptr<const traccc::Logger> logger,
+		useGBTS = false);
 
     /// Copy constructor
     ///
@@ -188,9 +189,15 @@ class full_chain_algorithm
 	gbts_seedfinder_config m_gbts_config; 
     /// Configuration for track parameter estimation
     track_params_estimation_config m_track_params_estimation_config;
+    
+	/// Configuration for the track finding
+    finding_algorithm::config_type m_finding_config;
+    /// Configuration for the track fitting
+    fitting_algorithm::config_type m_fitting_config;
 	
 	bool usingGBTS;
-    /// @}
+    
+	/// @}
 
 };  // class full_chain_algorithm
 
