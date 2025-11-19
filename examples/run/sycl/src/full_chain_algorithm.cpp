@@ -115,14 +115,9 @@ full_chain_algorithm::full_chain_algorithm(
       m_track_params_estimation_config(track_params_estimation_config),
       m_finding_config(finding_config),
       m_fitting_config(fitting_config),
-      usingGBTS = useGBTS {
+      usingGBTS(useGBTS) {
 
-    if (usingGBTS) {
-        TRACCC_LOCAL_LOGGER(std::move(log));
-        TRACCC_ERROR(
-            "GBTS not implemented for sycl, this will run with "
-            "triplet seeding");
-    }
+    assert(!usingGBTS && "GBTS not implemented for sycl");
     // Tell the user what device is being used.
     TRACCC_INFO("Using SYCL device: " << m_data->m_queue.device_name());
 
@@ -214,7 +209,7 @@ full_chain_algorithm::full_chain_algorithm(const full_chain_algorithm& parent)
       m_track_params_estimation_config(parent.m_track_params_estimation_config),
       m_finding_config(parent.m_finding_config),
       m_fitting_config(parent.m_fitting_config),
-      usingGBTS = parent.usingGBTS {
+      usingGBTS(parent.usingGBTS) {
 
     // Copy the detector (description) to the device.
     m_copy(vecmem::get_data(m_det_descr.get()), m_device_det_descr)->wait();
