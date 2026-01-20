@@ -1,6 +1,6 @@
 /** TRACCC library, part of the ACTS project (R&D line)
  *
- * (c) 2022-2025 CERN for the benefit of the ACTS project
+ * (c) 2022-2026 CERN for the benefit of the ACTS project
  *
  * Mozilla Public License Version 2.0
  */
@@ -13,10 +13,9 @@
 #include "traccc/cuda/clusterization/measurement_sorting_algorithm.hpp"
 #include "traccc/cuda/finding/combinatorial_kalman_filter_algorithm.hpp"
 #include "traccc/cuda/fitting/kalman_fitting_algorithm.hpp"
-#include "traccc/cuda/gbts_seeding/gbts_seeding_algorithm.hpp"
-#include "traccc/cuda/seeding/seeding_algorithm.hpp"
 #include "traccc/cuda/seeding/spacepoint_formation_algorithm.hpp"
 #include "traccc/cuda/seeding/track_params_estimation.hpp"
+#include "traccc/cuda/seeding/triplet_seeding_algorithm.hpp"
 #include "traccc/cuda/utils/stream.hpp"
 #include "traccc/edm/silicon_cell_collection.hpp"
 #include "traccc/edm/track_collection.hpp"
@@ -155,7 +154,7 @@ class full_chain_algorithm
     /// Spacepoint formation algorithm
     spacepoint_formation_algorithm m_spacepoint_formation;
     /// Seeding algorithm
-    seeding_algorithm m_seeding;
+    triplet_seeding_algorithm m_seeding;
     /// Seeding with GBTS algorithm
     gbts_seeding_algorithm m_gbts_seeding;
     /// Track parameter estimation algorithm
