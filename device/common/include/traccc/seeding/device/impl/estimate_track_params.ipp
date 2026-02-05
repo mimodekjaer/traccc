@@ -50,6 +50,7 @@ TRACCC_HOST_DEVICE inline void estimate_track_params(
 
     // Get bound track parameter
     bound_track_parameters<>& track_params = params.at(globalIndex);
+    new (&track_params) bound_track_parameters<>();
     seed_to_bound_param_vector(track_params, measurements, spacepoints,
                                seeds.at(globalIndex), vector_field_at_sp);
 
