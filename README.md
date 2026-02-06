@@ -114,43 +114,43 @@ flowchart LR
 
     %% Host param est.
     seed -->|<a href='https://github.com/acts-project/traccc/blob/main/core/include/traccc/seeding/track_params_estimation.hpp'>Param. Est.</a>| ptrack;
-    linkStyle 17 stroke: black;
+    linkStyle 14 stroke: black;
 
     %% SYCL param est.
     seed -->|<a href='https://github.com/acts-project/traccc/blob/main/device/sycl/include/traccc/sycl/seeding/track_params_estimation.hpp'>Param. Est.</a>| ptrack;
-    linkStyle 18 stroke: blue;
+    linkStyle 15 stroke: blue;
 
     %% CUDA param est.
     seed -->|<a href='https://github.com/acts-project/traccc/blob/main/device/cuda/include/traccc/cuda/seeding/track_params_estimation.hpp'>Param. Est.</a>| ptrack;
-    linkStyle 19 stroke: green;
+    linkStyle 16 stroke: green;
 
     %% Alpaka param est.
     seed -->|<a href='https://github.com/acts-project/traccc/blob/main/device/alpaka/include/traccc/alpaka/seeding/track_params_estimation.hpp'>Param. Est.</a>| ptrack;
-    linkStyle 20 stroke: orange;
+    linkStyle 17 stroke: orange;
 
     %% Host CKF
     ptrack -->|<a href='https://github.com/acts-project/traccc/blob/main/core/include/traccc/finding/combinatorial_kalman_filter_algorithm.hpp'>CKF</a>| trackc;
-    linkStyle 21 stroke: black;
+    linkStyle 18 stroke: black;
 
     %% Host Kalman filter
     trackc -->|<a href='https://github.com/acts-project/traccc/blob/main/core/include/traccc/fitting/kalman_fitting_algorithm.hpp'>Kalman filter</a>| tracks;
-    linkStyle 22 stroke: black;
+    linkStyle 19 stroke: black;
 
     %% SYCL CKF
     ptrack -->|<a href='https://github.com/acts-project/traccc/blob/main/device/sycl/include/traccc/sycl/finding/combinatorial_kalman_filter_algorithm.hpp'>CKF</a>| trackc;
-    linkStyle 23 stroke: blue;
+    linkStyle 20 stroke: blue;
 
     %% SYCL Kalman filter
     trackc -->|<a href='https://github.com/acts-project/traccc/blob/main/device/sycl/include/traccc/sycl/fitting/kalman_fitting_algorithm.hpp'>Kalman filter</a>| tracks;
-    linkStyle 24 stroke: blue;
+    linkStyle 21 stroke: blue;
 
     %% CUDA CKF
     ptrack -->|<a href='https://github.com/acts-project/traccc/blob/main/device/cuda/include/traccc/cuda/finding/finding_algorithm.hpp'>CKF</a>| trackc;
-    linkStyle 25 stroke: green;
+    linkStyle 22 stroke: green;
 
     %% CUDA Kalman filter
     trackc -->|<a href='https://github.com/acts-project/traccc/blob/main/device/cuda/include/traccc/cuda/fitting/fitting_algorithm.hpp'>Kalman filter</a>| tracks;
-    linkStyle 26 stroke: green;
+    linkStyle 23 stroke: green;
 ```
 
 ## Requirements and dependencies
