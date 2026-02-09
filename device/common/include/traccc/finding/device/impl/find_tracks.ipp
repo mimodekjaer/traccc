@@ -315,7 +315,7 @@ TRACCC_HOST_DEVICE inline void find_tracks(
                  * higher $\chi^2$ value than any of the elements in the
                  * array, we can discard the current track state.
                  */
-                if (size >= cfg.max_num_branches_per_surface && chi2 >= max) {
+                if (size >= cfg.max_num_branches_per_surface && chi2 > max) {
                     result.reset();
                 }
 
@@ -428,23 +428,41 @@ TRACCC_HOST_DEVICE inline void find_tracks(
                     const unsigned int prev_ndf_sum =
                         payload.step > 0 ? links.at(prev_link_idx).ndf_sum : 0;
 
-                    tmp_links.at(p_offset + l_pos) = {
-                        .step = payload.step,
-                        .previous_candidate_idx = prev_link_idx,
-                        .meas_idx = meas_idx,
-                        .seed_idx = seed_idx,
-                        .n_skipped = n_skipped,
-                        .n_consecutive_skipped = 0,
-                        .chi2 = chi2,
-                        .chi2_sum = prev_chi2_sum + chi2,
-                        .ndf_sum =
-                            prev_ndf_sum +
-                            measurements
-                                .at(std::get<0>(*result).measurement_index())
-                                .dimensions()};
+                    /*
+                     * We add the new link under one of two conditions. First,
+                     * if the best-of array is not yet full (i.e. if the index
+                     * variable is not the maximum number of branches), we add
+                     * it unconditionally. If the array _is_ full, we add the
+                     * link if we have a link with a lower $\chi^2$ value than
+                     * the previous highest value. If the value is exactly
+                     * equal, we use a tie-breaking mechanism, namely a
+                     * comparison of the measurement indices. This tie breaker
+                     * should be extremely rare and should not bias the
+                     * physics results, but helps ensure that the output of
+                     * this algorithm is deterministic.
+                     */
+                    if (index != cfg.max_num_branches_per_surface ||
+                        chi2 < tmp_links.at(p_offset + l_pos).chi2 ||
+                        (chi2 == tmp_links.at(p_offset + l_pos).chi2 &&
+                         meas_idx < tmp_links.at(p_offset + l_pos).meas_idx)) {
+                        tmp_links.at(p_offset + l_pos) = {
+                            .step = payload.step,
+                            .previous_candidate_idx = prev_link_idx,
+                            .meas_idx = meas_idx,
+                            .seed_idx = seed_idx,
+                            .n_skipped = n_skipped,
+                            .n_consecutive_skipped = 0,
+                            .chi2 = chi2,
+                            .chi2_sum = prev_chi2_sum + chi2,
+                            .ndf_sum =
+                                prev_ndf_sum + measurements
+                                                   .at(std::get<0>(*result)
+                                                           .measurement_index())
+                                                   .dimensions()};
 
-                    tmp_params.at(p_offset + l_pos) =
-                        std::get<0>(*result).filtered_params();
+                        tmp_params.at(p_offset + l_pos) =
+                            std::get<0>(*result).filtered_params();
+                    }
 
                     /*
                      * Reset the temporary state storage, as this is no longer
