@@ -18,6 +18,21 @@
 namespace traccc::device {
 
 namespace details {
+// Compare two device triplets
+struct device_triplet_comparator {
+    constexpr bool operator()(const device_triplet& lhs,
+                              const device_triplet& rhs) {
+        if (lhs.weight != rhs.weight) {
+            return lhs.weight > rhs.weight;
+        } else {
+            return std::tuple<unsigned int, unsigned int, unsigned int>(
+                       lhs.spB, lhs.spM, lhs.spT) >
+                   std::tuple<unsigned int, unsigned int, unsigned int>(
+                       rhs.spB, rhs.spM, rhs.spT);
+        }
+    }
+};
+
 // Finding minimum element algorithm
 template <typename Comparator>
 TRACCC_HOST_DEVICE std::size_t min_elem(const device_triplet* arr,
@@ -125,15 +140,12 @@ inline void select_seeds(
         // the triplet with the lowest weight is removed
         if (n_triplets_per_spM >= finder_config.maxSeedsPerSpM) {
 
-            const std::size_t min_index = details::min_elem(
-                data, 0, finder_config.maxSeedsPerSpM,
-                [](const device_triplet& lhs, const device_triplet& rhs) {
-                    return lhs.weight > rhs.weight;
-                });
+            const std::size_t min_index =
+                details::min_elem(data, 0, finder_config.maxSeedsPerSpM,
+                                  details::device_triplet_comparator{});
 
-            const scalar& min_weight = data[min_index].weight;
-
-            if (aTriplet.weight > min_weight) {
+            if (details::device_triplet_comparator{}(aTriplet,
+                                                     data[min_index])) {
                 data[min_index] = aTriplet;
             }
         }
@@ -147,11 +159,8 @@ inline void select_seeds(
     }
 
     // sort the triplets per spM
-    details::insertionSort(
-        data, 0, n_triplets_per_spM,
-        [](const device_triplet& lhs, const device_triplet& rhs) {
-            return lhs.weight > rhs.weight;
-        });
+    details::insertionSort(data, 0, n_triplets_per_spM,
+                           details::device_triplet_comparator{});
 
     // the number of good seed per compatible middle spacepoint
     unsigned int n_seeds_per_spM = 0;
