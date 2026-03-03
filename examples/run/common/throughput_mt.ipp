@@ -157,7 +157,7 @@ int throughput_mt(std::string_view description, int argc, char* argv[]) {
     if (seeding_gbts_opts.useGBTS) {
         if (!gbts_config.setLinkingScheme(
                 seeding_gbts_opts.binTables, seeding_gbts_opts.layerInfo,
-                seeding_gbts_opts.barcodeBinning, 900.0f,
+                seeding_gbts_opts.barcodeBinning, detector, 900.0f,
                 prelogger->clone("GBTSconfig"))) {
             TRACCC_ERROR("faliure in setting gbts linking scheme");
             return -1;

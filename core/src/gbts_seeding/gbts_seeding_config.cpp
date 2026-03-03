@@ -7,8 +7,13 @@
 
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
 
+#include "traccc/geometry/detector_type_list.hpp"
+#include "traccc/geometry/host_detector.hpp"
+
 #include <algorithm>
 #include <ranges>
+
+#include <detray/geometry/surface.hpp>
 
 namespace traccc {
 
@@ -20,6 +25,7 @@ bool gbts_seedfinder_config::setLinkingScheme(
     const std::vector<std::pair<int, std::vector<int>>>& input_binTables,
     const device::gbts_layerInfo input_layerInfo,
     std::vector<std::pair<uint64_t, short>>& detrayBarcodeBinning,
+    const traccc::host_detector& detector,
     float minPt = 900.0f,
     std::unique_ptr<const traccc::Logger> callers_logger =
         getDummyLogger().clone()) {
@@ -39,12 +45,29 @@ bool gbts_seedfinder_config::setLinkingScheme(
     for (std::pair<int, int> lI : layerInfo.info)
         n_eta_bins = std::max(n_eta_bins,
                               static_cast<unsigned int>(lI.first + lI.second));
-
+    
     // bin by volume
     std::ranges::sort(
         detrayBarcodeBinning,
         [](const std::pair<uint64_t, short> a,
            const std::pair<uint64_t, short> b) { return a.first > b.first; });
+
+    for (const auto& barcodeLayerPair : detrayBarcodeBinning) {
+        detray::geometry::barcode bc(barcodeLayerPair.first);
+        auto pos = traccc::host_detector_visitor<traccc::detector_type_list>(
+            detector,
+            [bc]<typename detector_traits_t>(
+                const typename detector_traits_t::host& det) {
+                detray::geometry::surface<typename detector_traits_t::host> surf(
+                    det, bc);
+                return surf.center(
+                    typename detector_traits_t::host::geometry_context{});
+            });
+        TRACCC_INFO("barcode " << barcodeLayerPair.first
+                    << " (vol=" << bc.volume() << " idx=" << bc.index() << ")"
+                    << " layer=" << barcodeLayerPair.second
+                    << " pos=" << pos);
+    }
 
     unsigned int largest_volume_index =
         detray::geometry::barcode(detrayBarcodeBinning[0].first).volume();
@@ -75,8 +98,9 @@ bool gbts_seedfinder_config::setLinkingScheme(
                       static_cast<short>(
                           surfaceToLayerMap.size() +
                           1);  // start of this volume's surfaces in the map + 1
-                for (std::array<unsigned int, 2> pair : surfacesInVolume)
+                for (std::array<unsigned int, 2> pair : surfacesInVolume){
                     surfaceToLayerMap.push_back(pair);
+                }
             }
             volumeToLayerMap_unordered.push_back(std::make_pair(
                 bin, current_volume));  // layerIdx if not split, begin-index in

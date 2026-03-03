@@ -14,6 +14,7 @@
 #include "traccc/definitions/common.hpp"
 #include "traccc/definitions/primitives.hpp"
 #include "traccc/definitions/qualifiers.hpp"
+#include "traccc/geometry/host_detector.hpp"
 #include "traccc/utils/messaging.hpp"
 
 // Detray include(s).
@@ -101,6 +102,7 @@ struct gbts_seedfinder_config {
         const std::vector<std::pair<int, std::vector<int>>>& binTables,
         const device::gbts_layerInfo layerInfo,
         std::vector<std::pair<uint64_t, short>>& detrayBarcodeBinning,
+        const traccc::host_detector& detector,
         float minPt, std::unique_ptr<const traccc::Logger> logger);
 
     // layer linking and geometry
