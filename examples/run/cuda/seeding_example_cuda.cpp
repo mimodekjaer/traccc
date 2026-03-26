@@ -164,7 +164,6 @@ int seq_run(const traccc::opts::track_seeding& seeding_opts,
     if (gbts_seeding_opts.useGBTS) {
         if (!gbts_config.setLinkingScheme(
                 gbts_seeding_opts.binTables,
-                gbts_seeding_opts.layerInfo,
                 gbts_seeding_opts.barcodeBinning, host_det, 900.0f,
                 logger().clone("GBTSconfig"))) {
             return -1;

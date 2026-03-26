@@ -13,7 +13,9 @@
 #include <algorithm>
 #include <ranges>
 
+#include <detray/geometry/detail/vertexer.hpp>
 #include <detray/geometry/surface.hpp>
+
 
 namespace traccc {
 
@@ -23,16 +25,13 @@ namespace traccc {
 // layers in layerInfo) minPt in MeV
 bool gbts_seedfinder_config::setLinkingScheme(
     const std::vector<std::pair<int, std::vector<int>>>& input_binTables,
-    const device::gbts_layerInfo input_layerInfo,
     std::vector<std::pair<uint64_t, short>>& detrayBarcodeBinning,
     const traccc::host_detector& detector,
     float minPt = 900.0f,
     std::unique_ptr<const traccc::Logger> callers_logger =
         getDummyLogger().clone()) {
-
     TRACCC_LOCAL_LOGGER(std::move(callers_logger));
-    // copy layer-eta binning infomation
-    layerInfo = input_layerInfo;
+
     // unroll binTables
     for (std::pair<int, std::vector<int>> binPairs : input_binTables) {
         for (int bin2 : binPairs.second) {
@@ -42,33 +41,12 @@ bool gbts_seedfinder_config::setLinkingScheme(
         }
     }
 
-    for (std::pair<int, int> lI : layerInfo.info)
-        n_eta_bins = std::max(n_eta_bins,
-                              static_cast<unsigned int>(lI.first + lI.second));
     
     // bin by volume
     std::ranges::sort(
         detrayBarcodeBinning,
         [](const std::pair<uint64_t, short> a,
            const std::pair<uint64_t, short> b) { return a.first > b.first; });
-
-    for (const auto& barcodeLayerPair : detrayBarcodeBinning) {
-        detray::geometry::barcode bc(barcodeLayerPair.first);
-        auto pos = traccc::host_detector_visitor<traccc::detector_type_list>(
-            detector,
-            [bc]<typename detector_traits_t>(
-                const typename detector_traits_t::host& det) {
-                detray::geometry::surface<typename detector_traits_t::host> surf(
-                    det, bc);
-                return surf.center(
-                    typename detector_traits_t::host::geometry_context{});
-            });
-        TRACCC_INFO("barcode " << barcodeLayerPair.first
-                    << " (vol=" << bc.volume() << " idx=" << bc.index() << ")"
-                    << " layer=" << barcodeLayerPair.second
-                    << " pos=" << pos);
-    }
-
     unsigned int largest_volume_index =
         detray::geometry::barcode(detrayBarcodeBinning[0].first).volume();
     auto current_volume = static_cast<short>(largest_volume_index);
@@ -78,15 +56,22 @@ bool gbts_seedfinder_config::setLinkingScheme(
             "map");
         return false;
     }
-
     bool layerChange = false;
     short current_layer = detrayBarcodeBinning[0].second;
-
+    size_t bound_current_layer = static_cast<size_t>(current_layer);
+    size_t max_layer = bound_current_layer;
+    for (std::pair<uint64_t, short> barcodeLayerPair : detrayBarcodeBinning) { 
+        max_layer = std::max(max_layer, static_cast<size_t>(barcodeLayerPair.second));
+    }
     int split_volumes = 0;
     std::vector<std::pair<short, unsigned int>> volumeToLayerMap_unordered;
     detrayBarcodeBinning.push_back(
         std::make_pair(UINT_MAX, -1));  // end-of-vector element
     std::vector<std::array<unsigned int, 2>> surfacesInVolume;
+    std::vector<std::array<float, 6>> boundingBoxesInVolume(max_layer + 1); // xmin, xmax, ymin, ymax, zmin, zmax for the layer
+    int nSurfacesInVolume = 0;
+    std::array<float, 6> layerBoundingBox = {4000.0, -4000.0, 0, 4000.0, -4000.0, 0}; // rmin, rmax, ravg, zmin, zmax, zavg for the layer
+    std::array<float, 6> bounding_box_xy = {4000.0, -4000.0, 0, 4000.0, -4000.0, 0}; // rmin, rmax, ravg, zmin, zmax, zavg for the surface
     for (std::pair<uint64_t, short> barcodeLayerPair : detrayBarcodeBinning) {
         detray::geometry::barcode barcode(barcodeLayerPair.first);
         if (current_volume != static_cast<short>(barcode.volume())) {
@@ -109,16 +94,91 @@ bool gbts_seedfinder_config::setLinkingScheme(
             current_volume = static_cast<short>(barcode.volume());
             current_layer = barcodeLayerPair.second;
             layerChange = false;
+    
             surfacesInVolume.clear();
+        }
+        if (barcodeLayerPair.second != -1) {
+        bounding_box_xy = traccc::host_detector_visitor<traccc::detector_type_list>(
+            detector,
+            [&barcode]<typename detector_traits_t>(
+                const typename detector_traits_t::host& det) {
+                detray::geometry::surface<typename detector_traits_t::host> surf(
+                    det, barcode);
+                const typename detector_traits_t::host::geometry_context ctx{};
+                auto vertices =
+                    detray::detail::get_global_vertices<
+                        typename detector_traits_t::host>(ctx, surf, 1u);
+                auto position = surf.center(ctx);
+                std::array<float, 6> bounding_box = {4000.0f, -4000.0f, static_cast<float>(std::sqrt(position[0]*position[0] + position[1]*position[1])), 4000.0f, -4000.0f, static_cast<float>(position[2])}; // rmin, rmax, ravg, zmin, zmax, zavg
+                for (auto& vertex : vertices) {
+                    for (auto& v : vertex) {
+                        auto r = std::sqrt(v[0]*v[0] + v[1]*v[1]);
+                        bounding_box[0] = std::min(bounding_box[0], static_cast<float>(r));
+                        bounding_box[1] = std::max(bounding_box[1], static_cast<float>(r));
+                        bounding_box[3] = std::min(bounding_box[3], static_cast<float>(v[2]));
+                        bounding_box[4] = std::max(bounding_box[4], static_cast<float>(v[2]));
+                    }
+                }
+                return bounding_box;
+            });
         }
         // is volume encompassed by a layer
         layerChange |= (current_layer != barcodeLayerPair.second);
-
+        if (bound_current_layer != static_cast<size_t>(barcodeLayerPair.second)) {
+            layerBoundingBox[2] = layerBoundingBox[2] / static_cast<float>(nSurfacesInVolume);
+            layerBoundingBox[5] = layerBoundingBox[5] / static_cast<float>(nSurfacesInVolume);
+            boundingBoxesInVolume[bound_current_layer] = layerBoundingBox;
+            bound_current_layer = static_cast<size_t>(barcodeLayerPair.second);
+            layerBoundingBox = {4000.0, -4000.0, 0, 4000.0, -4000.0, 0}; // rmin, rmax, ravg, zmin, zmax, zavg for the layer
+            nSurfacesInVolume = 0;
+        }
+        layerBoundingBox[0] = std::min(layerBoundingBox[0], bounding_box_xy[0]);
+        layerBoundingBox[1] = std::max(layerBoundingBox[1], bounding_box_xy[1]);
+        layerBoundingBox[2] = (layerBoundingBox[2] + bounding_box_xy[2]);
+        layerBoundingBox[3] = std::min(layerBoundingBox[3], bounding_box_xy[3]);
+        layerBoundingBox[4] = std::max(layerBoundingBox[4], bounding_box_xy[4]);
+        layerBoundingBox[5] = (layerBoundingBox[5] + bounding_box_xy[5]);
+        nSurfacesInVolume++;
         // save surfaces incase volume is not encommpassed by a layer
         surfacesInVolume.push_back(std::array<unsigned int, 2>{
-            static_cast<unsigned int>(barcode.index()),
-            static_cast<unsigned int>(barcodeLayerPair.second)});
+                static_cast<unsigned int>(barcode.index()),
+                static_cast<unsigned int>(barcodeLayerPair.second)});
     }
+
+    layerInfo.reserve(static_cast<unsigned int>(boundingBoxesInVolume.size()));
+
+    int first_bin = 0;
+    for (size_t i = 0; i < boundingBoxesInVolume.size(); i++) {
+        float dr = boundingBoxesInVolume[i][1] - boundingBoxesInVolume[i][0];
+        float dz = boundingBoxesInVolume[i][4] - boundingBoxesInVolume[i][3];
+        float min_eta, max_eta, min_tau, max_tau;
+        char type;
+        if(dz > dr) {
+            min_tau = boundingBoxesInVolume[i][3] / boundingBoxesInVolume[i][2];
+            max_tau = boundingBoxesInVolume[i][4] / boundingBoxesInVolume[i][2];
+            min_eta = -std::log(std::sqrt(1 + min_tau*min_tau) - min_tau);
+            max_eta = -std::log(std::sqrt(1 + max_tau*max_tau) - max_tau);
+            type = '0';
+        } else {
+            min_tau = boundingBoxesInVolume[i][5] / boundingBoxesInVolume[i][0];
+            max_tau = boundingBoxesInVolume[i][5] / boundingBoxesInVolume[i][1];
+            min_eta = -std::log(std::sqrt(1 + min_tau*min_tau) - min_tau);
+            max_eta = -std::log(std::sqrt(1 + max_tau*max_tau) - max_tau);
+            type = '1';
+        }
+        if(min_eta > max_eta) {
+            std::swap(min_eta, max_eta);
+        }
+        min_eta -= 1e-6f;
+        max_eta += 1e-6f;
+        int bins = static_cast<int>(std::round((max_eta - min_eta)/0.2f));
+        float eta_bin_width = (max_eta - min_eta) / static_cast<float>(bins);
+        layerInfo.addLayer(type, first_bin, bins, static_cast<float>(min_eta), static_cast<float>(eta_bin_width));
+        TRACCC_DEBUG("Layer:" << i << " type: " << type << " first_bin: " << first_bin << " bins: " << bins << " min_eta: " << min_eta << " eta_bin_width: " << eta_bin_width);
+        first_bin += bins;   
+    }
+
+    n_eta_bins = static_cast<unsigned int>(first_bin);
     // make volume by layer map
     volumeToLayerMap.resize(largest_volume_index + 1);
     for (unsigned int i = 0; i < largest_volume_index + 1; ++i)
@@ -127,15 +187,14 @@ bool gbts_seedfinder_config::setLinkingScheme(
         volumeToLayerMap[vLpair.second] = vLpair.first;
     // scale cuts
     float ptScale = 900.0f / minPt;
-    algo_params.min_delta_phi *= ptScale;
-    algo_params.dphi_coeff *= ptScale;
-    algo_params.min_delta_phi_low_dr *= ptScale;
-    algo_params.dphi_coeff_low_dr *= ptScale;
-    algo_params.max_Kappa *= ptScale;
+    graph_building_params.min_delta_phi *= ptScale;
+    graph_building_params.dphi_coeff *= ptScale;
+    graph_building_params.min_delta_phi_low_dr *= ptScale;
+    graph_building_params.dphi_coeff_low_dr *= ptScale;
+    graph_building_params.max_Kappa *= ptScale;
 
     // contianers sizes
     nLayers = static_cast<unsigned int>(layerInfo.type.size());
-
     TRACCC_INFO("volume layer map has " << volumeToLayerMap_unordered.size()
                                         << " volumes");
     TRACCC_INFO("The maxium volume index in the layer map is "
@@ -145,7 +204,7 @@ bool gbts_seedfinder_config::setLinkingScheme(
                 << split_volumes << " multi-layer volumes");
     TRACCC_INFO("layer info found for " << nLayers << " layers");
     TRACCC_INFO(binTables.size() << " linked layer-eta bins for GBTS");
-
+    TRACCC_INFO("Total number of eta bins: " << n_eta_bins);
     if (nLayers == 0) {
         TRACCC_ERROR("no layers input");
         return false;

@@ -30,7 +30,7 @@ class track_gbts_seeding : public interface {
     // config info from file
     std::vector<std::pair<uint64_t, short>> barcodeBinning;
     std::vector<std::pair<int, std::vector<int>>> binTables;
-    traccc::device::gbts_layerInfo layerInfo;
+    //traccc::device::gbts_layerInfo layerInfo;
 
     /// Constructor
     track_gbts_seeding();

@@ -62,7 +62,7 @@ void track_gbts_seeding::read(const boost::program_options::variables_map &) {
         binTables.emplace_back(bin1, bin2);
     }
 
-    std::ifstream layerInfoFile(
+    /*std::ifstream layerInfoFile(
         std::filesystem::path(config_dir + "/layerInfo.txt"));
 
     unsigned int nLayers = 0;
@@ -76,7 +76,7 @@ void track_gbts_seeding::read(const boost::program_options::variables_map &) {
         layerInfoFile >> info[0] >> info[1];
         layerInfoFile >> geo[0] >> geo[1];
         layerInfo.addLayer(type, info[0], info[1], geo[0], geo[1]);
-    }
+    }*/
 }
 
 std::unique_ptr<configuration_printable> track_gbts_seeding::as_printable()
