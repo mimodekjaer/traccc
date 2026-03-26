@@ -144,7 +144,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     unsigned int nThreads = 128;
     unsigned int nBlocks = 1 + (ctx.nSp - 1) / nThreads;
-
+    
     cudaMalloc(&ctx.d_layerCounts, (m_config.nLayers + 1) * sizeof(int));
     cudaMemset(ctx.d_layerCounts, 0, (m_config.nLayers + 1) * sizeof(int));
 
@@ -172,7 +172,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     cudaMemcpyAsync(ctx.d_layerType, m_config.layerInfo.type.data(),
                     sizeof(char) * m_config.nLayers, cudaMemcpyHostToDevice,
                     stream);
-
     kernels::count_sp_by_layer<<<nBlocks, nThreads, 0, stream>>>(
         spacepoints, measurements, ctx.d_volumeToLayerMap,
         ctx.d_surfaceToLayerMap, ctx.d_layerType, ctx.d_reducedSP,
@@ -181,6 +180,13 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         m_config.volumeToLayerMap.size(), m_config.surfaceToLayerMap.size());
 
     cudaStreamSynchronize(stream);
+    cudaError_t error = cudaGetLastError();
+
+    if (error != cudaSuccess) {
+        TRACCC_ERROR("Counting spacepoints by layer: CUDA error: "
+                     << cudaGetErrorString(error));
+        return {0, m_mr.main};
+    }
 
     cudaFree(ctx.d_volumeToLayerMap);
     cudaFree(ctx.d_surfaceToLayerMap);
@@ -208,13 +214,11 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     cudaMalloc(&ctx.d_sp_params, ctx.nSp * sizeof(float4));
     cudaMalloc(&ctx.d_original_sp_idx, ctx.nSp * sizeof(int));
-
     kernels::bin_sp_by_layer<<<nBlocks, nThreads, 0, stream>>>(
         ctx.d_sp_params, ctx.d_reducedSP, ctx.d_layerCounts,
         ctx.d_spacepointsLayer, ctx.d_original_sp_idx, ctx.nSp);
-
     cudaStreamSynchronize(stream);
-    cudaError_t error = cudaGetLastError();
+    error = cudaGetLastError();
 
     if (error != cudaSuccess) {
         TRACCC_ERROR("spacepoint layer binning: CUDA error: "
@@ -242,7 +246,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     unsigned int nNodesPerBlock = nThreads * 64;
 
     nBlocks = 1 + (ctx.nNodes - 1) / nNodesPerBlock;
-
     kernels::node_phi_binning_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.d_sp_params, ctx.d_node_phi_index, nNodesPerBlock, ctx.nNodes,
         m_config.n_phi_bins);
@@ -252,7 +255,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     cudaMalloc(&ctx.d_node_eta_index, sizeof(int) * ctx.nNodes);
 
     nBlocks = m_config.nLayers;
-
     kernels::node_eta_binning_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.d_sp_params, ctx.d_layer_info, ctx.d_layer_geo,
         ctx.d_node_eta_index, ctx.d_layerCounts, m_config.nLayers);
@@ -276,7 +278,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     cudaMalloc(&ctx.d_phi_cusums, hist_size);
 
     nBlocks = 1 + (ctx.nNodes - 1) / nNodesPerBlock;
-
     kernels::eta_phi_histo_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.d_node_phi_index, ctx.d_node_eta_index, ctx.d_eta_phi_histo,
         nNodesPerBlock, ctx.nNodes, m_config.n_phi_bins);
@@ -340,7 +341,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     eta_sums.reset();
 
     cudaStreamSynchronize(stream);
-
     kernels::eta_phi_prefix_sum_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.d_eta_node_counter, ctx.d_phi_cusums, nBinsPerBlock,
         m_config.n_eta_bins, m_config.n_phi_bins);
@@ -363,7 +363,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     nNodesPerBlock = nThreads * 64;
 
     nBlocks = 1 + (ctx.nNodes - 1) / nNodesPerBlock;
-
     kernels::node_sorting_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.d_sp_params, ctx.d_node_eta_index, ctx.d_node_phi_index,
         ctx.d_phi_cusums, ctx.d_node_params, ctx.d_node_index,
@@ -398,7 +397,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     nThreads = nBinsPerBlock;
 
     nBlocks = 1 + (m_config.n_eta_bins - 1) / nBinsPerBlock;
-
     kernels::minmax_rad_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.d_eta_bin_views, ctx.d_node_params, ctx.d_bin_rads, nBinsPerBlock,
         m_config.n_eta_bins);
