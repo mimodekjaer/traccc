@@ -17,6 +17,7 @@
 #include "traccc/edm/measurement_collection.hpp"
 #include "traccc/edm/spacepoint_collection.hpp"
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
+#include "../../utils/barrier.hpp"
 
 // Detray include(s).
 #include <detray/geometry/barcode.hpp>
@@ -187,7 +188,7 @@ __global__ void node_eta_binning_kernel(const float4* d_sp_params,
         eta_bin_width = layerGeo.y;
     }
 
-    __syncthreads();
+    barrier().blockBarrier();
 
     if (num_eta_bins == 1) {  // all nodes are in the same bin
         for (int idx = threadIdx.x + layer_begin; idx < layer_end;

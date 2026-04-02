@@ -13,6 +13,9 @@
 #include <cuda_runtime.h>
 #include <math_constants.h>
 #include <vector_functions.h>
+#include "traccc/definitions/qualifiers.hpp"
+
+#include "../../utils/barrier.hpp"
 
 
 namespace traccc::cuda::kernels {
@@ -34,19 +37,19 @@ using traccc::cuda::make_short2;
 
 struct edgeState {
 
-    __device__ inline void initialize(const float4& node1_params,
+    TRACCC_DEVICE inline void initialize(const float4& node1_params,
                                       const float4& node2_params);
 
-    __device__ inline float& m_Cx(const int i, const int j) {
+    TRACCC_DEVICE inline float& m_Cx(const int i, const int j) {
         return Cx[i + j + 1 * (i != 0) * (j != 0)];
     }
-    __device__ inline float& m_Cy(const int i, const int j) {
+    TRACCC_DEVICE inline float& m_Cy(const int i, const int j) {
         return Cy[i + j];
     }
-    __device__ inline const float& m_Cx(const int i, const int j) const {
+    TRACCC_DEVICE inline const float& m_Cx(const int i, const int j) const {
         return Cx[i + j + 1 * (i != 0) * (j != 0)];
     }
-    __device__ inline const float& m_Cy(const int i, const int j) const {
+    TRACCC_DEVICE inline const float& m_Cy(const int i, const int j) const {
         return Cy[i + j];
     }
 
@@ -98,7 +101,7 @@ __global__ static void CCA_IterationKernel(
     if (threadIdx.x == 0) {
         nEdgesLeft = d_counters[3 + toggle];  // from the previous iteration
     }
-    __syncthreads();
+    barrier().blockBarrier();
 
     for (int globalIdx = threadIdx.x + blockIdx.x * blockDim.x;
          globalIdx < nEdgesLeft; globalIdx += blockDim.x * gridDim.x) {
@@ -160,7 +163,7 @@ __global__ static void CCA_IterationKernel(
         // levels are on both sides of the array
         d_levels[levelStore + edgeIdx] = next_level;
     }
-    __syncthreads();
+    barrier().blockBarrier();
 
     if (threadIdx.x == 0) {
         if (atomicAdd(&d_counters[5], 1) == gridDim.x - 1) {
@@ -182,7 +185,7 @@ void __global__ count_terminus_edges(int2* d_path_store,
     if (threadIdx.x == 0) {
         outgoingCount = 0;
     }
-    __syncthreads();
+    barrier().blockBarrier();
 
     int edge_idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (edge_idx < nEdges) {
@@ -196,7 +199,7 @@ void __global__ count_terminus_edges(int2* d_path_store,
             atomicAdd(&outgoingCount, out_paths.x);
         }
     }
-    __syncthreads();
+    barrier().blockBarrier();
     if (threadIdx.x == 0) {
         atomicAdd(&d_counters[6], outgoingCount);
     }
@@ -237,7 +240,7 @@ void __global__ fill_path_store(int2* d_path_store, int* d_output_graph,
     if (threadIdx.x == 0) {
         n_live_paths = 0;
     }
-    __syncthreads();
+    barrier().blockBarrier();
 
     int edge_size = 2 + 1 + max_num_neighbours;
     unsigned int path_idx = threadIdx.x + blockIdx.x * nTerminusPerBlock;
@@ -265,7 +268,7 @@ void __global__ fill_path_store(int2* d_path_store, int* d_output_graph,
             live_paths[live_idx] = make_int2(edge_idx, new_path_idx);
         }
     }
-    __syncthreads();
+    barrier().blockBarrier();
 
     int2 path = make_int2(0, 0);
     bool has_path = false;
@@ -276,18 +279,18 @@ void __global__ fill_path_store(int2* d_path_store, int* d_output_graph,
             n_live_paths = min(n_live_paths,
                                traccc::device::gbts_consts::live_path_buffer);
         }
-        __syncthreads();
+        barrier().blockBarrier();
         // get path
         if (threadIdx.x < n_live_paths) {
             path = live_paths[n_live_paths - threadIdx.x - 1];
             has_path = true;
         }
-        __syncthreads();
+        barrier().blockBarrier();
         if (threadIdx.x == 0) {
             n_live_paths =
                 n_live_paths < blockDim.x ? 0 : n_live_paths - blockDim.x;
         }
-        __syncthreads();
+        barrier().blockBarrier();
         if (has_path) {
             int nNei = d_output_graph[traccc::device::gbts_consts::nNei +
                                       edge_size * path.x];
@@ -314,7 +317,7 @@ void __global__ fill_path_store(int2* d_path_store, int* d_output_graph,
             }
         }
         // wait for live_paths to repopulate
-        __syncthreads();
+        barrier().blockBarrier();
     }
 }
 
@@ -324,7 +327,7 @@ void __global__ fill_path_store(int2* d_path_store, int* d_output_graph,
  *  @param[in] node1_params / node2_params the nodes of the starting edge. Node
  *  1 is the inner node and we filter outside in
  */
-__device__ inline void edgeState::initialize(
+TRACCC_DEVICE inline void edgeState::initialize(
     const float4& node1_params, const float4& node2_params) {  // x, y, z,type
 
     m_J = 0.0f;
@@ -385,7 +388,7 @@ __device__ inline void edgeState::initialize(
  *  @param[in] node1_params params of the inner node of the new edge to be added
  *  to the seed
  */
-inline __device__ bool update(edgeState* new_ts, const edgeState* ts,
+inline TRACCC_DEVICE bool update(edgeState* new_ts, const edgeState* ts,
                               const float4& node1_params,
                               // node params are x, y, z, type
                               const gbts_seed_extraction_params& KF_params) {
@@ -538,7 +541,7 @@ inline __device__ bool update(edgeState* new_ts, const edgeState* ts,
  *  @param[out] d_seed_ambiguity here is 0 if the seed is the highest quality
  *  seed using all of its edges and -1 otherwise
  */
-inline __device__ void add_seed_proposal(const int qual, const int path_idx,
+inline TRACCC_DEVICE void add_seed_proposal(const int qual, const int path_idx,
                                          const unsigned int prop_idx,
                                          char* d_seed_ambiguity,
                                          int2* d_seed_proposals,

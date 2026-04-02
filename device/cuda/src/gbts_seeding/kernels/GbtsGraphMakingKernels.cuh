@@ -18,6 +18,7 @@
 // Project include(s)
 #include "traccc/cuda/gbts_seeding/gbts_seeding_algorithm.hpp"
 #include "traccc/definitions/qualifiers.hpp"
+#include "../../utils/barrier.hpp"
 
 
 namespace traccc::cuda::kernels {
@@ -102,7 +103,7 @@ __global__ static void graphEdgeMakingKernel(
         high_Kappa_d0 = d_graph_building_params->high_Kappa_d0;
     }
 
-    __syncthreads();
+    barrier().blockBarrier();
     for (int idx = threadIdx.x; idx < num_nodes1; idx += blockDim.x) {
         // loading a chunk of nodes1 into shared mem buffers
         int offset = 5 * (idx + begin_bin1);
@@ -113,7 +114,7 @@ __global__ static void graphEdgeMakingKernel(
         z[idx] = d_node_params[offset + 4];
     }
 
-    __syncthreads();
+    barrier().blockBarrier();
 
     int last_n1 = 0;  // initial value for the sliding window
 
@@ -297,7 +298,7 @@ __global__ static void graphEdgeMatchingKernel(
         PI_2_h = static_cast<float16>(2 * CUDART_PI_F);
         ONE_h = static_cast<float16>(1.0f);
     }
-    __syncthreads();
+    barrier().blockBarrier();
 
     int edge1_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
