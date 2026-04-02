@@ -23,6 +23,20 @@
 
 namespace traccc::cuda::kernels {
 
+using uint2 = traccc::cuda::uint2;
+using float4 = traccc::cuda::float4;
+using float2 = traccc::cuda::float2;
+using int2 = traccc::cuda::int2;
+using uint4 = traccc::cuda::uint4;
+using short2 = traccc::cuda::short2;
+
+using traccc::cuda::make_int2;
+using traccc::cuda::make_uint2;
+using traccc::cuda::make_float4;
+using traccc::cuda::make_float2;
+using traccc::cuda::make_uint4;
+using traccc::cuda::make_short2;
+
 __global__ void count_sp_by_layer(
     const traccc::edm::spacepoint_collection::const_view spacepoints_view,
     const edm::measurement_collection::const_view measurements_view,
@@ -283,9 +297,9 @@ __global__ void eta_phi_prefix_sum_kernel(const int* d_eta_node_counter,
 __global__ void node_sorting_kernel(
     const float4* d_sp_params, const int* d_node_eta_index,
     const int* d_node_phi_index, int* d_phi_cusums, float* d_node_params,
-    int* d_node_index, int* d_original_sp_idx,
-    const gbts_graph_building_params* ap, const unsigned int nNodesPerBlock,
-    const unsigned int nNodes, const unsigned int nPhiBins) {
+    int* d_node_index, int* d_original_sp_idx, const gbts_graph_building_params* ap,
+    const unsigned int nNodesPerBlock, const unsigned int nNodes,
+    const unsigned int nPhiBins) {
 
     int begin_node = blockIdx.x * nNodesPerBlock;
 

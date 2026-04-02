@@ -9,12 +9,28 @@
 
 // cuda includes
 #include <cuda.h>
-#include <cuda_fp16.h>
+//#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math_constants.h>
 #include <vector_functions.h>
 
+
 namespace traccc::cuda::kernels {
+
+using uint2 = traccc::cuda::uint2;
+using float4 = traccc::cuda::float4;
+using float2 = traccc::cuda::float2;
+using int2 = traccc::cuda::int2;
+using uint4 = traccc::cuda::uint4;
+using short2 = traccc::cuda::short2;
+
+
+using traccc::cuda::make_int2;
+using traccc::cuda::make_uint2;
+using traccc::cuda::make_float4;
+using traccc::cuda::make_float2;
+using traccc::cuda::make_uint4;
+using traccc::cuda::make_short2;
 
 struct edgeState {
 

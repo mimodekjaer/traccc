@@ -13,18 +13,37 @@
 #include <cuda_runtime.h>
 #include <math_constants.h>
 #include <vector_functions.h>
+#include <cmath>
 
 // Project include(s)
 #include "traccc/cuda/gbts_seeding/gbts_seeding_algorithm.hpp"
+#include "traccc/definitions/qualifiers.hpp"
+
 
 namespace traccc::cuda::kernels {
 
-struct __align__(8) half4 {
-    __half x, y, z, w;
+using uint2 = traccc::cuda::uint2;
+using float4 = traccc::cuda::float4;
+using float2 = traccc::cuda::float2;
+using int2 = traccc::cuda::int2;
+using uint4 = traccc::cuda::uint4;
+using short2 = traccc::cuda::short2;
+using float16 = std::float_t; //std::half; //std::float_t; // Should be float16, but I need to find another version than cuda half
+
+using traccc::cuda::make_int2;
+using traccc::cuda::make_uint2;
+using traccc::cuda::make_float4;
+using traccc::cuda::make_float2;
+using traccc::cuda::make_uint4;
+using traccc::cuda::make_short2;
+
+
+struct /*TRACCC_ALIGN(8)*/ TRACCC_ALIGN(16) half4 {
+    float16 x, y, z, w;
 };
 
-inline __device__ __host__ half4 make_half4(const __half x, const __half y,
-                                            const __half z, const __half w) {
+inline TRACCC_HOST_DEVICE half4 make_half4(const float16 x, const float16 y,
+                                            const float16 z, const float16 w) {
     half4 t;
     t.x = x;
     t.y = y;
@@ -221,7 +240,7 @@ __global__ static void graphEdgeMakingKernel(
             }
             unsigned int nEdges = atomicAdd(&d_counters[0], 1);
             if (nEdges < nMaxEdges) {
-                __half exp_eta = __float2half(sqrtf(1 + tau * tau) - tau);
+                float16 exp_eta = static_cast<float16>(sqrtf(1 + tau * tau) - tau);
                 // edge linking order is inside->out
                 atomicAdd(&d_num_outgoing_edges[begin_bin1 + n1Idx], 1);
 
@@ -229,8 +248,8 @@ __global__ static void graphEdgeMakingKernel(
                     make_int2(globalIdx2, begin_bin1 + n1Idx);
 
                 d_edge_params[nEdges] = make_half4(
-                    exp_eta, __float2half(curv), __float2half(phi2 + curv * r2),
-                    __float2half(phi1 + curv * r1));
+                    exp_eta, static_cast<float16>(curv), static_cast<float16>(phi2 + curv * r2),
+                    static_cast<float16>(phi1 + curv * r1));
             }
         }
     }
@@ -262,21 +281,21 @@ __global__ static void graphEdgeMatchingKernel(
     unsigned char* d_num_neighbours, int* d_neighbours, int* d_reIndexer,
     unsigned int* d_counters, const unsigned int nEdges,
     const unsigned int nMaxNei) {
-    __shared__ __half cut_dphi_max;
-    __shared__ __half cut_dcurv_max;
-    __shared__ __half cut_tau_ratio_max;
-    __shared__ __half PI_h;
-    __shared__ __half PI_2_h;
-    __shared__ __half ONE_h;
+    __shared__ float16 cut_dphi_max;
+    __shared__ float16 cut_dcurv_max;
+    __shared__ float16 cut_tau_ratio_max;
+    __shared__ float16 PI_h;
+    __shared__ float16 PI_2_h;
+    __shared__ float16 ONE_h;
     if (threadIdx.x == 0) {
-        cut_dphi_max = __float2half(d_graph_building_params->cut_dphi_max);
-        cut_dcurv_max = __float2half(d_graph_building_params->cut_dcurv_max);
+        cut_dphi_max = static_cast<float16>(d_graph_building_params->cut_dphi_max);
+        cut_dcurv_max = static_cast<float16>(d_graph_building_params->cut_dcurv_max);
         cut_tau_ratio_max =
-            __float2half(d_graph_building_params->cut_tau_ratio_max);
+            static_cast<float16>(d_graph_building_params->cut_tau_ratio_max);
 
-        PI_h = __float2half(CUDART_PI_F);
-        PI_2_h = __float2half(2 * CUDART_PI_F);
-        ONE_h = __float2half(1.0f);
+        PI_h = static_cast<float16>(CUDART_PI_F);
+        PI_2_h = static_cast<float16>(2 * CUDART_PI_F);
+        ONE_h = static_cast<float16>(1.0f);
     }
     __syncthreads();
 
@@ -296,9 +315,9 @@ __global__ static void graphEdgeMatchingKernel(
     }
     half4 params1 = d_edge_params[edge1_idx];  // [exp_eta, curv, Phi1, Phi2]
 
-    __half uat_2 = ONE_h / params1.x;
-    __half Phi2 = params1.z;
-    __half curv2 = params1.y;
+    float16 uat_2 = ONE_h / params1.x;
+    float16 Phi2 = params1.z;
+    float16 curv2 = params1.y;
 
     int nei_pos = nMaxNei * edge1_idx;
 
@@ -313,26 +332,26 @@ __global__ static void graphEdgeMatchingKernel(
 
         half4 params2 = d_edge_params[edge2_idx];
 
-        __half tau_ratio = params2.x * uat_2 - ONE_h;
+        float16 tau_ratio = static_cast<float16>(params2.x * uat_2 - ONE_h);
 
-        if (__habs(tau_ratio) > cut_tau_ratio_max) {  // bad match
+        if (fabsf(tau_ratio) > cut_tau_ratio_max) {  // bad match
             continue;
         }
 
-        __half dPhi = Phi2 - params2.w;  // Phi2
+        float16 dPhi = Phi2 - params2.w;  // Phi2
 
         if (dPhi < -PI_h) {
             dPhi += PI_2_h;
         } else if (dPhi > PI_h) {
             dPhi -= PI_2_h;
         }
-        if (__habs(dPhi) > cut_dphi_max) {
+        if (fabsf(dPhi) > cut_dphi_max) {
             continue;
         }
 
-        __half dcurv = curv2 - params2.y;
+        float16 dcurv = curv2 - params2.y;
 
-        if (__habs(dcurv) > cut_dcurv_max) {
+        if (fabsf(dcurv) > cut_dcurv_max) {
             continue;
         }
 
