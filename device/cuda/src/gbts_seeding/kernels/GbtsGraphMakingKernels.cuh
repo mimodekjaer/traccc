@@ -29,7 +29,9 @@ using float2 = traccc::cuda::float2;
 using int2 = traccc::cuda::int2;
 using uint4 = traccc::cuda::uint4;
 using short2 = traccc::cuda::short2;
-using float16 = std::float_t; //std::half; //std::float_t; // Should be float16, but I need to find another version than cuda half
+using float16 = std::float_t; // half; //std::float_t; //std::half; //std::float_t; // Should be float16, but I need to find another version than cuda half
+TRACCC_DEVICE float16 (*habs)(float16) =  __habs; // fabsf; //
+
 
 using traccc::cuda::make_int2;
 using traccc::cuda::make_uint2;
@@ -39,7 +41,7 @@ using traccc::cuda::make_uint4;
 using traccc::cuda::make_short2;
 
 
-struct /*TRACCC_ALIGN(8)*/ TRACCC_ALIGN(16) half4 {
+struct TRACCC_ALIGN(8) half4 {
     float16 x, y, z, w;
 };
 
@@ -335,7 +337,7 @@ __global__ static void graphEdgeMatchingKernel(
 
         float16 tau_ratio = static_cast<float16>(params2.x * uat_2 - ONE_h);
 
-        if (fabsf(tau_ratio) > cut_tau_ratio_max) {  // bad match
+        if (habs(tau_ratio) > cut_tau_ratio_max) {  // bad match
             continue;
         }
 
@@ -346,13 +348,13 @@ __global__ static void graphEdgeMatchingKernel(
         } else if (dPhi > PI_h) {
             dPhi -= PI_2_h;
         }
-        if (fabsf(dPhi) > cut_dphi_max) {
+        if (habs(dPhi) > cut_dphi_max) {
             continue;
         }
 
         float16 dcurv = curv2 - params2.y;
 
-        if (fabsf(dcurv) > cut_dcurv_max) {
+        if (habs(dcurv) > cut_dcurv_max) {
             continue;
         }
 
