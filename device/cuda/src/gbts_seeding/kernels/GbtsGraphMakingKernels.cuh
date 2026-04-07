@@ -30,7 +30,7 @@ using int2 = traccc::cuda::int2;
 using uint4 = traccc::cuda::uint4;
 using short2 = traccc::cuda::short2;
 using float16 = std::float_t; // half; //std::float_t; //std::half; //std::float_t; // Should be float16, but I need to find another version than cuda half
-TRACCC_DEVICE float16 (*habs)(float16) =  __habs; // fabsf; //
+TRACCC_DEVICE float16 (*habs)(float16) =  fabsf; // fabsf; //
 
 
 using traccc::cuda::make_int2;
