@@ -63,7 +63,7 @@ bool gbts_seedfinder_config::setLinkingScheme(
     std::vector<std::pair<short, unsigned int>> volumeToLayerMap_unordered;
     detrayBarcodeBinning.push_back(
         std::make_pair(UINT_MAX, -1));  // end-of-vector element
-    std::vector<std::array<unsigned int, 2>> surfacesInVolume;
+    std::vector<std::pair<unsigned int, unsigned int>> surfacesInVolume;
     for (std::pair<uint64_t, short> barcodeLayerPair : detrayBarcodeBinning) {
         detray::geometry::barcode barcode(barcodeLayerPair.first);
         if (current_volume != static_cast<short>(barcode.volume())) {
@@ -75,7 +75,7 @@ bool gbts_seedfinder_config::setLinkingScheme(
                       static_cast<short>(
                           surfaceToLayerMap.size() +
                           1);  // start of this volume's surfaces in the map + 1
-                for (std::array<unsigned int, 2> pair : surfacesInVolume)
+                for (std::pair<unsigned int, unsigned int> pair : surfacesInVolume)
                     surfaceToLayerMap.push_back(pair);
             }
             volumeToLayerMap_unordered.push_back(std::make_pair(
@@ -91,9 +91,9 @@ bool gbts_seedfinder_config::setLinkingScheme(
         layerChange |= (current_layer != barcodeLayerPair.second);
 
         // save surfaces incase volume is not encommpassed by a layer
-        surfacesInVolume.push_back(std::array<unsigned int, 2>{
+        surfacesInVolume.push_back(std::make_pair(
             static_cast<unsigned int>(barcode.index()),
-            static_cast<unsigned int>(barcodeLayerPair.second)});
+            static_cast<unsigned int>(barcodeLayerPair.second)));
     }
     // make volume by layer map
     volumeToLayerMap.resize(largest_volume_index + 1);

@@ -14,7 +14,8 @@
 #include <math_constants.h>
 #include <vector_functions.h>
 #include "traccc/definitions/qualifiers.hpp"
-
+#include "traccc/edm/container.hpp"
+#include <vecmem/memory/device_atomic_ref.hpp>
 #include "../../utils/barrier.hpp"
 
 
@@ -87,11 +88,16 @@ struct Tracklet {
  * for the number of active edges
  */
 __global__ static void CCA_IterationKernel(
-    const int* d_output_graph, char* d_levels, int* d_active_edges,
-    short2* d_outgoing_paths, unsigned int* d_counters, int iter,
+    const collection_types<int>::const_view d_output_graph_view, const collection_types<char>::view d_levels_view, const collection_types<int>::view d_active_edges_view,
+    const collection_types<short2>::view d_outgoing_paths_view, const collection_types<unsigned int>::view d_counters_view, int iter,
     unsigned int nEdges, unsigned int max_num_neighbours, int minLevel) {
 
     __shared__ unsigned int nEdgesLeft;
+    collection_types<int>::const_device d_output_graph(d_output_graph_view);
+    collection_types<char>::device d_levels(d_levels_view);
+    collection_types<int>::device d_active_edges(d_active_edges_view);
+    collection_types<short2>::device d_outgoing_paths(d_outgoing_paths_view);
+    collection_types<unsigned int>::device d_counters(d_counters_view);
     unsigned int edge_size = 2 + 1 + max_num_neighbours;
 
     int toggle = iter % 2;
@@ -136,7 +142,7 @@ __global__ static void CCA_IterationKernel(
                 d_outgoing_paths[edgeIdx].y = -1;
             } else {
                 unsigned int edgesLeftPlace =
-                    atomicAdd(&d_counters[4 - toggle], 1);
+                    vecmem::device_atomic_ref<unsigned int>(d_counters[4 - toggle]).fetch_add(1);
                 d_active_edges[edgesLeftPlace] =
                     edgeIdx;  // for the next iteration
             }
@@ -166,7 +172,7 @@ __global__ static void CCA_IterationKernel(
     barrier().blockBarrier();
 
     if (threadIdx.x == 0) {
-        if (atomicAdd(&d_counters[5], 1) == gridDim.x - 1) {
+        if (vecmem::device_atomic_ref<unsigned int>(d_counters[5]).fetch_add(1) == gridDim.x - 1) {
             // this is the last block
             d_counters[3 + toggle] = 0;
             d_counters[5] = 0;
@@ -174,10 +180,12 @@ __global__ static void CCA_IterationKernel(
     }
 }
 
-void __global__ count_terminus_edges(int2* d_path_store,
-                                     short2* d_outgoing_paths,
-                                     unsigned int* d_counters,
+void __global__ count_terminus_edges(const collection_types<short2>::view d_outgoing_paths_view,
+                                     const collection_types<unsigned int>::view d_counters_view,
                                      unsigned int nEdges) {
+
+    collection_types<short2>::device d_outgoing_paths(d_outgoing_paths_view);
+    collection_types<unsigned int>::device d_counters(d_counters_view);
 
     // count in shared first to reduce global atomics
     __shared__ int outgoingCount;
@@ -195,20 +203,22 @@ void __global__ count_terminus_edges(int2* d_path_store,
         // fill the first part of path_store so fitting can skip go-nowhere
         // paths
         if (out_paths.y != -1) {
-            d_outgoing_paths[edge_idx].y = atomicAdd(&d_counters[7], 1);
-            atomicAdd(&outgoingCount, out_paths.x);
+            d_outgoing_paths[edge_idx].y = vecmem::device_atomic_ref<unsigned int>(d_counters[7]).fetch_add(1);
+            vecmem::device_atomic_ref<int>(outgoingCount).fetch_add(out_paths.x);
         }
     }
     barrier().blockBarrier();
     if (threadIdx.x == 0) {
-        atomicAdd(&d_counters[6], outgoingCount);
+        vecmem::device_atomic_ref<unsigned int>(d_counters[6]).fetch_add(outgoingCount);
     }
 }
 
-void __global__ add_terminus_to_path_store(int2* d_path_store,
-                                           short2* d_outgoing_paths,
-                                           unsigned int* d_counters,
+void __global__ add_terminus_to_path_store(const collection_types<int2>::view d_path_store_view,
+                                           const collection_types<short2>::const_view d_outgoing_paths_view,
                                            unsigned int nEdges) {
+
+    collection_types<int2>::device d_path_store(d_path_store_view);
+    collection_types<short2>::const_device d_outgoing_paths(d_outgoing_paths_view);
 
     int edge_idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (edge_idx >= nEdges) {
@@ -227,12 +237,19 @@ void __global__ add_terminus_to_path_store(int2* d_path_store,
 // The paths order the edges in reverse order compared to graph linking
 // extracting all paths here allows for fitting to occor down know paths in
 // registers
-void __global__ fill_path_store(int2* d_path_store, int* d_output_graph,
-                                char* d_levels, unsigned int* d_counters,
+void __global__ fill_path_store(const collection_types<int2>::view d_path_store_view,
+                                const collection_types<int>::const_view d_output_graph_view,
+                                const collection_types<char>::const_view d_levels_view,
+                                const collection_types<unsigned int>::view d_counters_view,
                                 unsigned int nTerminus,
                                 unsigned int nTerminusPerBlock,
                                 unsigned int max_num_neighbours,
                                 unsigned int nPaths) {
+
+    collection_types<int2>::device d_path_store(d_path_store_view);
+    collection_types<int>::const_device d_output_graph(d_output_graph_view);
+    collection_types<char>::const_device d_levels(d_levels_view);
+    collection_types<unsigned int>::device d_counters(d_counters_view);
 
     __shared__ int2 live_paths[traccc::device::gbts_consts::live_path_buffer];
     __shared__ int n_live_paths;
@@ -258,11 +275,11 @@ void __global__ fill_path_store(int2* d_path_store, int* d_output_graph,
             if (level != d_levels[edge_idx] + 1) {
                 continue;
             }
-            int live_idx = atomicAdd(&n_live_paths, 1);
+            int live_idx = vecmem::device_atomic_ref<int>(n_live_paths).fetch_add(1);
             if (live_idx >= traccc::device::gbts_consts::live_path_buffer) {
                 break;
             }
-            int new_path_idx = atomicAdd(&d_counters[7], 1);
+            int new_path_idx = vecmem::device_atomic_ref<unsigned int>(d_counters[7]).fetch_add(1);
             // head edge idx, link back
             d_path_store[new_path_idx] = make_int2(edge_idx, path_idx);
             live_paths[live_idx] = make_int2(edge_idx, new_path_idx);
@@ -303,11 +320,11 @@ void __global__ fill_path_store(int2* d_path_store, int* d_output_graph,
                 if (level != d_levels[edge_idx] + 1) {
                     continue;
                 }
-                path_idx = atomicAdd(&d_counters[7], 1);
+                path_idx = vecmem::device_atomic_ref<unsigned int>(d_counters[7]).fetch_add(1);
                 if (path_idx >= nPaths) {
                     break;
                 }
-                int live_idx = atomicAdd(&n_live_paths, 1);
+                int live_idx = vecmem::device_atomic_ref<int>(n_live_paths).fetch_add(1);
                 if (live_idx >= traccc::device::gbts_consts::live_path_buffer) {
                     break;
                 }
@@ -543,11 +560,15 @@ inline TRACCC_DEVICE bool update(edgeState* new_ts, const edgeState* ts,
  */
 inline TRACCC_DEVICE void add_seed_proposal(const int qual, const int path_idx,
                                          const unsigned int prop_idx,
-                                         char* d_seed_ambiguity,
-                                         int2* d_seed_proposals,
-                                         unsigned long long int* d_edge_bids,
-                                         const int2* d_path_store,
+                                         const collection_types<char>::view d_seed_ambiguity_view,
+                                         const collection_types<int2>::view d_seed_proposals_view,
+                                         const collection_types<unsigned long long int>::view d_edge_bids_view,
+                                         const collection_types<int2>::const_view d_path_store_view,
                                          char depth = -1) {
+    collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
+    collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
+    collection_types<unsigned long long int>::device d_edge_bids(d_edge_bids_view);
+    collection_types<int2>::const_device d_path_store(d_path_store_view);
 
     // new seed bids for its edges
     d_seed_proposals[prop_idx] = make_int2(qual, path_idx);
@@ -575,11 +596,19 @@ inline TRACCC_DEVICE void add_seed_proposal(const int qual, const int path_idx,
 }
 
 void __global__ fit_segments(
-    float4* d_sp_params, int* d_output_graph, int2* d_path_store,
-    int2* d_seed_proposals, unsigned long long int* d_edge_bids,
-    char* d_seed_ambiguity, char* d_levels, unsigned int* d_counters,
+    const collection_types<float4>::const_view d_sp_reduced_view, const collection_types<int>::const_view d_output_graph_view, const collection_types<int2>::const_view d_path_store_view,
+    const collection_types<int2>::view d_seed_proposals_view, const collection_types<unsigned long long int>::view d_edge_bids_view,
+    const collection_types<char>::view d_seed_ambiguity_view, const collection_types<unsigned int>::view d_counters_view,
     unsigned int nTerminusEdges, int minLevel, unsigned int max_num_neighbours,
     gbts_seed_extraction_params seed_extraction_params) {
+        
+    const collection_types<float4>::const_device d_sp_reduced(d_sp_reduced_view);
+    collection_types<int>::const_device d_output_graph(d_output_graph_view);
+    collection_types<int2>::const_device d_path_store(d_path_store_view);
+    collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
+    collection_types<unsigned long long int>::device d_edge_bids(d_edge_bids_view);
+    collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
+    collection_types<unsigned int>::device d_counters(d_counters_view);
 
     // take an extracted path and fit it to produce a quality score
     unsigned int path_idx =
@@ -597,18 +626,18 @@ void __global__ fit_segments(
 
     int2 path = d_path_store[path_idx];
 
-    int nodeidx =
+    const int nodeidx1 =
         d_output_graph[traccc::device::gbts_consts::node1 + edge_size * path.x];
-    float4 node1 = d_sp_params[nodeidx];
-    nodeidx =
+    float4 node1 = d_sp_reduced[nodeidx1];
+    const int nodeidx2 =
         d_output_graph[traccc::device::gbts_consts::node2 + edge_size * path.x];
-    float4 node2 = d_sp_params[nodeidx];
+    float4 node2 = d_sp_reduced[nodeidx2];
 
     state1.initialize(node2, node1);
     while (path.y >= 0) {
         path = d_path_store[path.y];
 
-        node2 = d_sp_params[d_output_graph[traccc::device::gbts_consts::node2 +
+        node2 = d_sp_reduced[d_output_graph[traccc::device::gbts_consts::node2 +
                                            edge_size * path.x]];
         if (toggle) {
             if (!update(&state1, &state2, node2, seed_extraction_params)) {
@@ -631,17 +660,24 @@ void __global__ fit_segments(
     } else {
         qual = static_cast<int>(seed_extraction_params.qual_scale * state1.m_J);
     }
-    int prop_idx = atomicAdd(&d_counters[8], 1);
+    int prop_idx = vecmem::device_atomic_ref<unsigned int>(d_counters[8]).fetch_add(1);
     // perform first round of bidding for disambiguation
     // only on the outermost edge
-    add_seed_proposal(qual, path_idx, prop_idx, d_seed_ambiguity,
-                      d_seed_proposals, d_edge_bids, d_path_store, 1);
+    add_seed_proposal(qual, path_idx, prop_idx, d_seed_ambiguity_view,
+                      d_seed_proposals_view, d_edge_bids_view, d_path_store_view, 1);
 }
 
-void __global__ reset_edge_bids(int2* d_path_store, int2* d_seed_proposals,
-                                unsigned long long int* d_edge_bids,
-                                char* d_seed_ambiguity,
-                                unsigned int* d_counters, int round) {
+void __global__ reset_edge_bids(const collection_types<int2>::const_view d_path_store_view, const collection_types<int2>::view d_seed_proposals_view,
+                                const collection_types<unsigned long long int>::view d_edge_bids_view,
+                                const collection_types<char>::view d_seed_ambiguity_view,
+                                const collection_types<unsigned int>::view d_counters_view,
+                                int round) {
+    
+    collection_types<int2>::const_device d_path_store(d_path_store_view);
+    collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
+    collection_types<unsigned long long int>::const_device d_edge_bids(d_edge_bids_view);
+    collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
+    collection_types<unsigned int>::device d_counters(d_counters_view);
 
     int nProps = d_counters[8];
     // first round find best seed starting at each edge
@@ -657,7 +693,7 @@ void __global__ reset_edge_bids(int2* d_path_store, int2* d_seed_proposals,
             } else {
                 d_seed_ambiguity[prop_idx] = -2;
                 // count rejected props to calculate nSeeds
-                atomicAdd(&d_counters[9], 1);
+                vecmem::device_atomic_ref<unsigned int>(d_counters[9]).fetch_add(1);
                 continue;
             }
         } else if (ambi == -2 | ambi == 0) {
@@ -684,18 +720,23 @@ void __global__ reset_edge_bids(int2* d_path_store, int2* d_seed_proposals,
         }  // flag as maybe seed, shares with a loser
         else {
             d_seed_ambiguity[prop_idx] = -2;
-            atomicAdd(&d_counters[9], 1);
+            vecmem::device_atomic_ref<unsigned int>(d_counters[9]).fetch_add(1);
             // definate fake, shares with a winner
         }
     }
 }
 
 // TO-DO?: reset prop count each iter and make new props like CCA active_edges
-void __global__ seeds_rebid_for_edges(int2* d_path_store,
-                                      int2* d_seed_proposals,
-                                      unsigned long long int* d_edge_bids,
-                                      char* d_seed_ambiguity,
+void __global__ seeds_rebid_for_edges(const collection_types<int2>::const_view d_path_store_view,
+                                      const collection_types<int2>::view d_seed_proposals_view,
+                                      const collection_types<unsigned long long int>::view d_edge_bids_view,
+                                      const collection_types<char>::view d_seed_ambiguity_view,
                                       unsigned int nProps) {
+
+    collection_types<int2>::const_device d_path_store(d_path_store_view);
+    collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
+    collection_types<unsigned long long int>::device d_edge_bids(d_edge_bids_view);
+    collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
 
     for (int prop_idx = threadIdx.x + blockIdx.x * blockDim.x;
          prop_idx < nProps; prop_idx += blockDim.x * gridDim.x) {
@@ -707,15 +748,20 @@ void __global__ seeds_rebid_for_edges(int2* d_path_store,
         }
         int2 prop = d_seed_proposals[prop_idx];
 
-        add_seed_proposal(prop.x, prop.y, prop_idx, d_seed_ambiguity,
-                          d_seed_proposals, d_edge_bids, d_path_store, -1);
+        add_seed_proposal(prop.x, prop.y, prop_idx, d_seed_ambiguity_view,
+                          d_seed_proposals_view, d_edge_bids_view, d_path_store_view, -1);
     }
 }
 
 void __global__ gbts_seed_conversion_kernel(
-    int2* d_seed_proposals, char* d_seed_ambiguity, int2* d_path_store,
-    int* d_output_graph, edm::seed_collection::view output_seeds,
+    const collection_types<int2>::view d_seed_proposals_view, const collection_types<char>::view d_seed_ambiguity_view, const collection_types<int2>::const_view d_path_store_view,
+    const collection_types<int>::const_view d_output_graph_view, edm::seed_collection::view output_seeds,
     const unsigned int nProps, const unsigned int max_num_neighbours) {
+
+    collection_types<int2>::const_device d_seed_proposals(d_seed_proposals_view);
+    collection_types<char>::const_device d_seed_ambiguity(d_seed_ambiguity_view);
+    collection_types<int2>::const_device d_path_store(d_path_store_view);
+    collection_types<int>::const_device d_output_graph(d_output_graph_view);
 
     int edge_size = 2 + 1 + max_num_neighbours;
     edm::seed_collection::device seeds_device(output_seeds);

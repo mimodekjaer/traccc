@@ -18,6 +18,8 @@
 // Project include(s)
 #include "traccc/cuda/gbts_seeding/gbts_seeding_algorithm.hpp"
 #include "traccc/definitions/qualifiers.hpp"
+#include "traccc/edm/container.hpp"
+#include <vecmem/memory/device_atomic_ref.hpp>
 #include "../../utils/barrier.hpp"
 
 
@@ -41,7 +43,7 @@ using traccc::cuda::make_uint4;
 using traccc::cuda::make_short2;
 
 
-struct TRACCC_ALIGN(8) half4 {
+struct TRACCC_ALIGN(16) half4 { // should be 8, for the actual float16 type
     float16 x, y, z, w;
 };
 
@@ -56,12 +58,20 @@ inline TRACCC_HOST_DEVICE half4 make_half4(const float16 x, const float16 y,
 }
 
 __global__ static void graphEdgeMakingKernel(
-    const uint4* d_bin_pair_views, const float* d_bin_pair_dphi,
-    const float* d_node_params,
+    const collection_types<int>::const_view d_bin_pair_views_view, const collection_types<float>::const_view d_bin_pair_dphi_view, // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
+    const collection_types<float>::const_view d_node_params_view,
     const gbts_graph_building_params* d_graph_building_params,
-    unsigned int* d_counters, int2* d_edge_nodes, half4* d_edge_params,
-    int* d_num_outgoing_edges, const unsigned int nMaxEdges,
+    const collection_types<unsigned int>::view d_counters_view, const collection_types<int2>::view d_edge_nodes_view, const collection_types<half4>::view d_edge_params_view,
+    const collection_types<int>::view d_num_outgoing_edges_view, const unsigned int nMaxEdges,
     const unsigned int nPhiBins) {
+
+    collection_types<int>::const_device d_bin_pair_views(d_bin_pair_views_view); // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
+    collection_types<float>::const_device d_bin_pair_dphi(d_bin_pair_dphi_view);
+    collection_types<float>::const_device d_node_params(d_node_params_view);
+    collection_types<unsigned int>::device d_counters(d_counters_view);
+    collection_types<int2>::device d_edge_nodes(d_edge_nodes_view);
+    collection_types<half4>::device d_edge_params(d_edge_params_view);
+    collection_types<int>::device d_num_outgoing_edges(d_num_outgoing_edges_view);
 
     __shared__ unsigned int begin_bin1;
     __shared__ unsigned int begin_bin2;
@@ -86,13 +96,12 @@ __global__ static void graphEdgeMakingKernel(
     __shared__ float z[traccc::device::gbts_consts::node_buffer_length];
 
     if (threadIdx.x == 0) {
-        uint4 views = d_bin_pair_views[blockIdx.x];
         deltaPhi = d_bin_pair_dphi[blockIdx.x];
 
-        begin_bin1 = views.x;
-        begin_bin2 = views.z;
-        num_nodes1 = views.y - begin_bin1;
-        num_nodes2 = views.w - begin_bin2;
+        begin_bin1 = d_bin_pair_views[4*blockIdx.x]; // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
+        begin_bin2 = d_bin_pair_views[4*blockIdx.x + 2]; // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
+        num_nodes1 = d_bin_pair_views[4*blockIdx.x + 1] - begin_bin1; // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
+        num_nodes2 = d_bin_pair_views[4*blockIdx.x + 3] - begin_bin2; // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
 
         minDeltaRad = d_graph_building_params->minDeltaRadius;
         min_z0 = d_graph_building_params->min_z0;
@@ -241,11 +250,11 @@ __global__ static void graphEdgeMakingKernel(
             if (d0_for_max_curv > d0_max) {
                 continue;
             }
-            unsigned int nEdges = atomicAdd(&d_counters[0], 1);
+            unsigned int nEdges = vecmem::device_atomic_ref<unsigned int>(d_counters[0]).fetch_add(1);
             if (nEdges < nMaxEdges) {
                 float16 exp_eta = static_cast<float16>(sqrtf(1 + tau * tau) - tau);
                 // edge linking order is inside->out
-                atomicAdd(&d_num_outgoing_edges[begin_bin1 + n1Idx], 1);
+                vecmem::device_atomic_ref<int>(d_num_outgoing_edges[begin_bin1 + n1Idx]).fetch_add(1);
 
                 d_edge_nodes[nEdges] =
                     make_int2(globalIdx2, begin_bin1 + n1Idx);
@@ -258,10 +267,14 @@ __global__ static void graphEdgeMakingKernel(
     }
 }
 
-__global__ static void graphEdgeLinkingKernel(const int2* d_edge_nodes,
-                                              int* d_edge_links,
-                                              int* d_num_outgoing_edges,
+__global__ static void graphEdgeLinkingKernel(const collection_types<int2>::const_view d_edge_nodes_view,
+                                              const collection_types<int>::view d_edge_links_view,
+                                              const collection_types<int>::view d_num_outgoing_edges_view,
                                               const unsigned int nEdges) {
+
+    collection_types<int2>::const_device d_edge_nodes(d_edge_nodes_view);
+    collection_types<int>::device d_edge_links(d_edge_links_view);
+    collection_types<int>::device d_num_outgoing_edges(d_num_outgoing_edges_view);
 
     int edge_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -272,18 +285,26 @@ __global__ static void graphEdgeLinkingKernel(const int2* d_edge_nodes,
 
     // this converts num_outgoing_edges to the start postion for each node in
     // d_edge_links
-    int pos = atomicSub(&d_num_outgoing_edges[sharedNode], 1);
+    int pos = vecmem::device_atomic_ref<int>(d_num_outgoing_edges[sharedNode]).fetch_add(-1);
     // provides views of edges leaving the sharedNode for linking
     d_edge_links[pos - 1] = edge_idx;
 }
 
 __global__ static void graphEdgeMatchingKernel(
     const gbts_graph_building_params* d_graph_building_params,
-    const half4* d_edge_params, const int2* d_edge_nodes,
-    const int* d_num_outgoing_edges, const int* d_edge_links,
-    unsigned char* d_num_neighbours, int* d_neighbours, int* d_reIndexer,
-    unsigned int* d_counters, const unsigned int nEdges,
+    const collection_types<half4>::const_view d_edge_params_view, const collection_types<int2>::const_view d_edge_nodes_view,
+    const collection_types<int>::const_view d_num_outgoing_edges_view, const collection_types<int>::const_view d_edge_links_view,
+    const collection_types<unsigned char>::view d_num_neighbours_view, const collection_types<int>::view d_neighbours_view, const collection_types<int>::view d_reIndexer_view,
+    const collection_types<unsigned int>::view d_counters_view, const unsigned int nEdges,
     const unsigned int nMaxNei) {
+    collection_types<half4>::const_device d_edge_params(d_edge_params_view);
+    collection_types<int2>::const_device d_edge_nodes(d_edge_nodes_view);
+    collection_types<int>::const_device d_num_outgoing_edges(d_num_outgoing_edges_view);
+    collection_types<int>::const_device d_edge_links(d_edge_links_view);
+    collection_types<unsigned char>::device d_num_neighbours(d_num_neighbours_view);
+    collection_types<int>::device d_neighbours(d_neighbours_view);
+    collection_types<int>::device d_reIndexer(d_reIndexer_view);
+    collection_types<unsigned int>::device d_counters(d_counters_view);
     __shared__ float16 cut_dphi_max;
     __shared__ float16 cut_dcurv_max;
     __shared__ float16 cut_tau_ratio_max;
@@ -368,14 +389,16 @@ __global__ static void graphEdgeMatchingKernel(
 
     if (num_nei != 0) {
         d_reIndexer[edge1_idx] = 1;
-        atomicAdd(&d_counters[1], num_nei);
+        vecmem::device_atomic_ref<unsigned int>(d_counters[1]).fetch_add(num_nei);
     }
 }
 
-__global__ void edgeReIndexingKernel(int* d_reIndexer, unsigned int* d_counters,
+__global__ void edgeReIndexingKernel(const collection_types<int>::view d_reIndexer_view, const collection_types<unsigned int>::view d_counters_view,
                                      const unsigned int nEdges) {
 
     // each thread gets an edge
+    collection_types<int>::device d_reIndexer(d_reIndexer_view);
+    collection_types<unsigned int>::device d_counters(d_counters_view);
 
     int edge_idx = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -385,15 +408,22 @@ __global__ void edgeReIndexingKernel(int* d_reIndexer, unsigned int* d_counters,
     if (d_reIndexer[edge_idx] == -1) {
         return;
     }
-    d_reIndexer[edge_idx] = atomicAdd(&d_counters[2], 1);
+    d_reIndexer[edge_idx] = vecmem::device_atomic_ref<unsigned int>(d_counters[2]).fetch_add(1);
 }
 
 __global__ static void graphCompressionKernel(
-    const int* d_orig_node_index, const int2* d_edge_nodes,
-    const unsigned char* d_num_neighbours, const int* d_neighbours,
-    const int* d_reIndexer, int* d_output_graph,
+    const collection_types<int>::const_view d_orig_node_index_view, const collection_types<int2>::const_view d_edge_nodes_view,
+    const collection_types<unsigned char>::const_view d_num_neighbours_view, const collection_types<int>::const_view d_neighbours_view,
+    const collection_types<int>::const_view d_reIndexer_view, const collection_types<int>::view d_output_graph_view,
     const unsigned int nEdgesPerBlock, const unsigned int nEdges,
     const unsigned int nMaxNei) {
+
+    collection_types<int>::const_device d_orig_node_index(d_orig_node_index_view);
+    collection_types<int2>::const_device d_edge_nodes(d_edge_nodes_view);
+    collection_types<unsigned char>::const_device d_num_neighbours(d_num_neighbours_view);
+    collection_types<int>::const_device d_neighbours(d_neighbours_view);
+    collection_types<int>::const_device d_reIndexer(d_reIndexer_view);
+    collection_types<int>::device d_output_graph(d_output_graph_view);
 
     int begin_edge = blockIdx.x * nEdgesPerBlock;
     int edge_size = 2 + 1 + nMaxNei;
