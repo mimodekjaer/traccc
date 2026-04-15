@@ -26,6 +26,11 @@
 #include <vecmem/containers/device_vector.hpp>
 #include <vecmem/memory/device_atomic_ref.hpp>
 
+// VecMem include(s).
+#include <vecmem/containers/data/vector_view.hpp>
+#include <vecmem/containers/device_vector.hpp>
+#include <vecmem/memory/device_atomic_ref.hpp>
+
 // Detray include(s).
 #include <detray/geometry/identifier.hpp>
 
@@ -292,6 +297,10 @@ __global__ void eta_phi_counting_kernel(const collection_types<int>::const_view 
                                         const unsigned int nPhiBins) {
 
     const collection_types<int>::const_device d_histo(d_histo_view);
+    collection_types<int>::device d_eta_node_counter(d_eta_node_counter_view);
+    collection_types<int>::device d_phi_cusums(d_phi_cusums_view);
+
+    collection_types<int>::const_device d_histo(d_histo_view);
     collection_types<int>::device d_eta_node_counter(d_eta_node_counter_view);
     collection_types<int>::device d_phi_cusums(d_phi_cusums_view);
 
