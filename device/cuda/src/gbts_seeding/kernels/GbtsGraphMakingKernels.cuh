@@ -60,14 +60,14 @@ inline TRACCC_HOST_DEVICE half4 make_half4(const float16 x, const float16 y,
 __global__ static void graphEdgeMakingKernel(
     const collection_types<int>::const_view d_bin_pair_views_view, const collection_types<float>::const_view d_bin_pair_dphi_view, // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
     const collection_types<float>::const_view d_node_params_view,
-    const gbts_graph_building_params* d_graph_building_params,
+    const gbts_graph_building_params d_graph_building_params,
     const collection_types<unsigned int>::view d_counters_view, const collection_types<int2>::view d_edge_nodes_view, const collection_types<half4>::view d_edge_params_view,
     const collection_types<int>::view d_num_outgoing_edges_view, const unsigned int nMaxEdges,
     const unsigned int nPhiBins) {
 
-    collection_types<int>::const_device d_bin_pair_views(d_bin_pair_views_view); // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
-    collection_types<float>::const_device d_bin_pair_dphi(d_bin_pair_dphi_view);
-    collection_types<float>::const_device d_node_params(d_node_params_view);
+    const collection_types<int>::const_device d_bin_pair_views(d_bin_pair_views_view); // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
+    const collection_types<float>::const_device d_bin_pair_dphi(d_bin_pair_dphi_view);
+    const collection_types<float>::const_device d_node_params(d_node_params_view);
     collection_types<unsigned int>::device d_counters(d_counters_view);
     collection_types<int2>::device d_edge_nodes(d_edge_nodes_view);
     collection_types<half4>::device d_edge_params(d_edge_params_view);
@@ -103,15 +103,15 @@ __global__ static void graphEdgeMakingKernel(
         num_nodes1 = d_bin_pair_views[4*blockIdx.x + 1] - begin_bin1; // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
         num_nodes2 = d_bin_pair_views[4*blockIdx.x + 3] - begin_bin2; // Here the type changed as a quick fix to avoid the issue with the bin_pair_views buffer
 
-        minDeltaRad = d_graph_building_params->minDeltaRadius;
-        min_z0 = d_graph_building_params->min_z0;
-        max_z0 = d_graph_building_params->max_z0;
-        maxOuterRad = d_graph_building_params->maxOuterRadius;
-        min_zU = d_graph_building_params->cut_zMinU;
-        max_zU = d_graph_building_params->cut_zMaxU;
-        max_kappa = d_graph_building_params->max_Kappa;
-        low_Kappa_d0 = d_graph_building_params->low_Kappa_d0;
-        high_Kappa_d0 = d_graph_building_params->high_Kappa_d0;
+        minDeltaRad = d_graph_building_params.minDeltaRadius;
+        min_z0 = d_graph_building_params.min_z0;
+        max_z0 = d_graph_building_params.max_z0;
+        maxOuterRad = d_graph_building_params.maxOuterRadius;
+        min_zU = d_graph_building_params.cut_zMinU;
+        max_zU = d_graph_building_params.cut_zMaxU;
+        max_kappa = d_graph_building_params.max_Kappa;
+        low_Kappa_d0 = d_graph_building_params.low_Kappa_d0;
+        high_Kappa_d0 = d_graph_building_params.high_Kappa_d0;
     }
 
     barrier().blockBarrier();
@@ -272,7 +272,7 @@ __global__ static void graphEdgeLinkingKernel(const collection_types<int2>::cons
                                               const collection_types<int>::view d_num_outgoing_edges_view,
                                               const unsigned int nEdges) {
 
-    collection_types<int2>::const_device d_edge_nodes(d_edge_nodes_view);
+    const collection_types<int2>::const_device d_edge_nodes(d_edge_nodes_view);
     collection_types<int>::device d_edge_links(d_edge_links_view);
     collection_types<int>::device d_num_outgoing_edges(d_num_outgoing_edges_view);
 
@@ -291,16 +291,16 @@ __global__ static void graphEdgeLinkingKernel(const collection_types<int2>::cons
 }
 
 __global__ static void graphEdgeMatchingKernel(
-    const gbts_graph_building_params* d_graph_building_params,
+    const gbts_graph_building_params d_graph_building_params,
     const collection_types<half4>::const_view d_edge_params_view, const collection_types<int2>::const_view d_edge_nodes_view,
     const collection_types<int>::const_view d_num_outgoing_edges_view, const collection_types<int>::const_view d_edge_links_view,
     const collection_types<unsigned char>::view d_num_neighbours_view, const collection_types<int>::view d_neighbours_view, const collection_types<int>::view d_reIndexer_view,
     const collection_types<unsigned int>::view d_counters_view, const unsigned int nEdges,
     const unsigned int nMaxNei) {
-    collection_types<half4>::const_device d_edge_params(d_edge_params_view);
+    const collection_types<half4>::const_device d_edge_params(d_edge_params_view);
     collection_types<int2>::const_device d_edge_nodes(d_edge_nodes_view);
-    collection_types<int>::const_device d_num_outgoing_edges(d_num_outgoing_edges_view);
-    collection_types<int>::const_device d_edge_links(d_edge_links_view);
+    const collection_types<int>::const_device d_num_outgoing_edges(d_num_outgoing_edges_view);
+    const collection_types<int>::const_device d_edge_links(d_edge_links_view);
     collection_types<unsigned char>::device d_num_neighbours(d_num_neighbours_view);
     collection_types<int>::device d_neighbours(d_neighbours_view);
     collection_types<int>::device d_reIndexer(d_reIndexer_view);
@@ -312,10 +312,10 @@ __global__ static void graphEdgeMatchingKernel(
     __shared__ float16 PI_2_h;
     __shared__ float16 ONE_h;
     if (threadIdx.x == 0) {
-        cut_dphi_max = static_cast<float16>(d_graph_building_params->cut_dphi_max);
-        cut_dcurv_max = static_cast<float16>(d_graph_building_params->cut_dcurv_max);
+        cut_dphi_max = static_cast<float16>(d_graph_building_params.cut_dphi_max);
+        cut_dcurv_max = static_cast<float16>(d_graph_building_params.cut_dcurv_max);
         cut_tau_ratio_max =
-            static_cast<float16>(d_graph_building_params->cut_tau_ratio_max);
+            static_cast<float16>(d_graph_building_params.cut_tau_ratio_max);
 
         PI_h = static_cast<float16>(CUDART_PI_F);
         PI_2_h = static_cast<float16>(2 * CUDART_PI_F);
@@ -418,11 +418,11 @@ __global__ static void graphCompressionKernel(
     const unsigned int nEdgesPerBlock, const unsigned int nEdges,
     const unsigned int nMaxNei) {
 
-    collection_types<int>::const_device d_orig_node_index(d_orig_node_index_view);
-    collection_types<int2>::const_device d_edge_nodes(d_edge_nodes_view);
-    collection_types<unsigned char>::const_device d_num_neighbours(d_num_neighbours_view);
-    collection_types<int>::const_device d_neighbours(d_neighbours_view);
-    collection_types<int>::const_device d_reIndexer(d_reIndexer_view);
+    const collection_types<int>::const_device d_orig_node_index(d_orig_node_index_view);
+    const collection_types<int2>::const_device d_edge_nodes(d_edge_nodes_view);
+    const collection_types<unsigned char>::const_device d_num_neighbours(d_num_neighbours_view);
+    const collection_types<int>::const_device d_neighbours(d_neighbours_view);
+    const collection_types<int>::const_device d_reIndexer(d_reIndexer_view);
     collection_types<int>::device d_output_graph(d_output_graph_view);
 
     int begin_edge = blockIdx.x * nEdgesPerBlock;

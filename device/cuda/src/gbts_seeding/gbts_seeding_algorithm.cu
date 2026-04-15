@@ -35,7 +35,7 @@ struct gbts_ctx {
     collection_types<unsigned int>::buffer counters_buf;
 
     // device side graph building cuts
-    gbts_graph_building_params* d_graph_building_params;
+    gbts_graph_building_params d_graph_building_params;
 
     // node making and binning
     collection_types<int>::buffer layerCounts_buf;
@@ -126,12 +126,12 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     gbts_ctx ctx;
 
     cudaStream_t stream = details::get_stream(m_stream);
-
-    cudaMalloc(&ctx.d_graph_building_params,
-               sizeof(m_config.graph_building_params));
-    cudaMemcpyAsync(
-        ctx.d_graph_building_params, &m_config.graph_building_params,
-        sizeof(m_config.graph_building_params), cudaMemcpyHostToDevice);
+    ctx.d_graph_building_params = m_config.graph_building_params;
+    //cudaMalloc(&ctx.d_graph_building_params,
+    //           sizeof(m_config.graph_building_params));
+    //cudaMemcpyAsync(
+    //    ctx.d_graph_building_params, &m_config.graph_building_params,
+    //    sizeof(m_config.graph_building_params), cudaMemcpyHostToDevice);
 
     // 0. bin spacepoints by the maping supplied to config.m_surfaceToLayerMap
     ctx.nSp = m_copy.get().get_size(spacepoints);
@@ -185,7 +185,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         layerCounts[layer + 1] += layerCounts[layer];
     }
     m_copy.get()(vecmem::get_data(layerCounts),
-                 ctx.layerCounts_buf)->ignore();
+                 ctx.layerCounts_buf)->wait();
 
     ctx.nNodes = static_cast<unsigned int>(layerCounts[m_config.nLayers]); // The number of spacepoints in the configured layers
     //ctx.nNodes = ctx.nSp; // TODO: This is a temporary fix to avoid the issue with the layerCounts buffer
@@ -282,7 +282,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         eta_sums[k + 1] += eta_sums[k];
     }
     // send back
-    m_copy.get()(vecmem::get_data(eta_sums), ctx.eta_node_counter_buf)->ignore();
+    m_copy.get()(vecmem::get_data(eta_sums), ctx.eta_node_counter_buf)->wait();
 
     ctx.eta_bin_views = collection_types<int>::host(2 * m_config.n_eta_bins, m_mr.host);
 
@@ -325,7 +325,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     ctx.eta_bin_views_buf = collection_types<int>::buffer(2 * m_config.n_eta_bins, m_mr.main); // Here the type changed as a quick fix to avoid the issue with the eta_bin_views buffer
     m_copy.get().setup(ctx.eta_bin_views_buf)->ignore();
-    m_copy.get()(vecmem::get_data(ctx.eta_bin_views), ctx.eta_bin_views_buf)->ignore();
+    m_copy.get()(vecmem::get_data(ctx.eta_bin_views), ctx.eta_bin_views_buf)->wait();
 
     ctx.bin_rads_buf = collection_types<float>::buffer(2*m_config.n_eta_bins, m_mr.main);
     m_copy.get().setup(ctx.bin_rads_buf)->ignore();
@@ -732,8 +732,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     TRACCC_DEBUG("Rejecetd " << nRejectedProps << " out of " << nProps
                              << " seed proposals");
 
-
-    cudaFree(ctx.d_graph_building_params);
 
     // 8. convert to 3sp seeds and make output buffer
 

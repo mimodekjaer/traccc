@@ -135,8 +135,8 @@ __global__ void bin_sp_by_layer(collection_types<float4>::view sp_params_view, c
                                 const collection_types<int>::view original_sp_idx_view, const unsigned int nSp) {
 
     // Parameters passed to the kernel
-    collection_types<float4>::const_device reducedSP(reducedSP_view);
-    collection_types<short>::const_device spacepointsLayer(spacepointsLayer_view);
+    const collection_types<float4>::const_device reducedSP(reducedSP_view);
+    const collection_types<short>::const_device spacepointsLayer(spacepointsLayer_view);
     // Parameters calculated in the kernel
     collection_types<int>::device layerCounts(layerCounts_view);
     collection_types<float4>::device sp_params(sp_params_view);
@@ -163,7 +163,7 @@ __global__ void node_phi_binning_kernel(const collection_types<float4>::const_vi
                                         const unsigned int nNodes,
                                         const unsigned int nPhiBins) {
 
-    collection_types<float4>::const_device d_sp_params(d_sp_params_view);
+    const collection_types<float4>::const_device d_sp_params(d_sp_params_view);
     collection_types<int>::device d_node_phi_index(d_node_phi_index_view);
     int begin_node = blockIdx.x * nNodesPerBlock;
 
@@ -201,7 +201,7 @@ __global__ void node_eta_binning_kernel(const collection_types<float4>::const_vi
                                         
     // Parameters passed to the kernel
     collection_types<int>::device layerCounts(layerCounts_view);
-    collection_types<float4>::const_device d_sp_params(d_sp_params_view);
+    const collection_types<float4>::const_device d_sp_params(d_sp_params_view);
     collection_types<std::pair<int, int>>::const_device d_layer_info(d_layer_info_view);
     collection_types<std::pair<float, float>>::const_device d_layer_geo(d_layer_geo_view);
     collection_types<int>::device d_node_eta_index(d_node_eta_index_view);
@@ -265,8 +265,8 @@ __global__ void eta_phi_histo_kernel(const collection_types<int>::const_view d_n
                                      const unsigned int nNodes,
                                      const unsigned int nPhiBins) {
 
-    collection_types<int>::const_device d_node_phi_index(d_node_phi_index_view);
-    collection_types<int>::const_device d_node_eta_index(d_node_eta_index_view);
+    const collection_types<int>::const_device d_node_phi_index(d_node_phi_index_view);
+    const collection_types<int>::const_device d_node_eta_index(d_node_eta_index_view);
     collection_types<int>::device d_eta_phi_histo(d_eta_phi_histo_view);
 
     int begin_node = blockIdx.x * nNodesPerBlock;
@@ -291,7 +291,7 @@ __global__ void eta_phi_counting_kernel(const collection_types<int>::const_view 
                                         const unsigned maxEtaBin,
                                         const unsigned nPhiBins) {
 
-    collection_types<int>::const_device d_histo(d_histo_view);
+    const collection_types<int>::const_device d_histo(d_histo_view);
     collection_types<int>::device d_eta_node_counter(d_eta_node_counter_view);
     collection_types<int>::device d_phi_cusums(d_phi_cusums_view);
 
@@ -321,7 +321,7 @@ __global__ void eta_phi_prefix_sum_kernel(const collection_types<int>::const_vie
                                           const unsigned int maxEtaBin,
                                           const unsigned int nPhiBins) {
 
-    collection_types<int>::const_device d_eta_node_counter(d_eta_node_counter_view);
+    const collection_types<int>::const_device d_eta_node_counter(d_eta_node_counter_view);
     collection_types<int>::device d_phi_cusums(d_phi_cusums_view);
 
     int eta_bin_start = nBinsPerBlock * blockIdx.x;
@@ -346,18 +346,18 @@ __global__ void eta_phi_prefix_sum_kernel(const collection_types<int>::const_vie
 __global__ void node_sorting_kernel(
     const collection_types<float4>::const_view d_sp_params_view, const collection_types<int>::const_view d_node_eta_index_view,
     const collection_types<int>::const_view d_node_phi_index_view, const collection_types<int>::view d_phi_cusums_view, const collection_types<float>::view d_node_params_view,
-    const collection_types<int>::view d_node_index_view, const collection_types<int>::const_view d_original_sp_idx_view, const gbts_graph_building_params* ap,
+    const collection_types<int>::view d_node_index_view, const collection_types<int>::const_view d_original_sp_idx_view, const gbts_graph_building_params ap,
     const unsigned int nNodesPerBlock, const unsigned int nNodes,
     const unsigned int nPhiBins) {
 
 
-    collection_types<float4>::const_device d_sp_params(d_sp_params_view);
-    collection_types<int>::const_device d_node_eta_index(d_node_eta_index_view);
-    collection_types<int>::const_device d_node_phi_index(d_node_phi_index_view);
+    const collection_types<float4>::const_device d_sp_params(d_sp_params_view);
+    const collection_types<int>::const_device d_node_eta_index(d_node_eta_index_view);
+    const collection_types<int>::const_device d_node_phi_index(d_node_phi_index_view);
     collection_types<int>::device d_phi_cusums(d_phi_cusums_view);
     collection_types<float>::device d_node_params(d_node_params_view);
     collection_types<int>::device d_node_index(d_node_index_view);
-    collection_types<int>::const_device d_original_sp_idx(d_original_sp_idx_view);
+    const collection_types<int>::const_device d_original_sp_idx(d_original_sp_idx_view);
 
 
     int begin_node = blockIdx.x * nNodesPerBlock;
@@ -379,10 +379,10 @@ __global__ void node_sorting_kernel(
 
         if (sp.w > 0) {  // type 0 only
             // linear fit
-            min_tau = ap->tMin_slope * (sp.w - ap->offset);
+            min_tau = ap.tMin_slope * (sp.w - ap.offset);
             // linear fit + correction for short clusters
-            max_tau = ap->tMax_min + ap->tMax_correction / (sp.w + ap->offset) +
-                      ap->tMax_slope * (sp.w - ap->offset);
+            max_tau = ap.tMax_min + ap.tMax_correction / (sp.w + ap.offset) +
+                      ap.tMax_slope * (sp.w - ap.offset);
         }
 
         int eta_index = d_node_eta_index[idx];
@@ -408,8 +408,8 @@ __global__ void minmax_rad_kernel(const collection_types<int>::const_view d_eta_
                                   const unsigned int nBinsPerBlock,
                                   const unsigned int maxEtaBin) {
 
-    collection_types<int>::const_device d_eta_bin_views(d_eta_bin_views_view); // Here the type changed as a quick fix to avoid the issue with the eta_bin_views buffer
-    collection_types<float>::const_device d_node_params(d_node_params_view);
+    const collection_types<int>::const_device d_eta_bin_views(d_eta_bin_views_view); // Here the type changed as a quick fix to avoid the issue with the eta_bin_views buffer
+    const collection_types<float>::const_device d_node_params(d_node_params_view);
     collection_types<float>::device d_bin_rads(d_bin_rads_view); // Here the type changed as a quick fix to avoid the issue with the bin_rads buffer
 
     int eta_bin_start = nBinsPerBlock * blockIdx.x;
