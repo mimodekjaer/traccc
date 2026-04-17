@@ -46,8 +46,7 @@ using traccc::cuda::make_short2;
 
 __global__ void count_sp_by_layer(
     const traccc::edm::spacepoint_collection::const_view spacepoints_view,
-    const edm::measurement_collection<default_algebra>::const_view
-        measurements_view,
+    const edm::measurement_collection::const_view measurements_view,
     const collection_types<short>::const_view volumeToLayerMap_view, const collection_types<std::pair<unsigned int, unsigned int>>::const_view surfaceToLayerMap_view,
     const collection_types<char>::const_view layerType_view, const collection_types<float4>::view reducedSP_view, const collection_types<int>::view layerCounts_view,
     const collection_types<short>::view spacepointsLayer_view, const float type1_max_width,
@@ -57,8 +56,7 @@ __global__ void count_sp_by_layer(
     // Parameters passed to the kernel
     const traccc::edm::spacepoint_collection::const_device spacepoints(
         spacepoints_view);
-    const edm::measurement_collection<default_algebra>::const_device
-        measurements(measurements_view);
+    const edm::measurement_collection::const_device measurements(measurements_view);
     const collection_types<short>::const_device volumeToLayerMap(volumeToLayerMap_view);
     const collection_types<std::pair<unsigned int, unsigned int>>::const_device surfaceToLayerMap(surfaceToLayerMap_view);
     const collection_types<char>::const_device layerType(layerType_view);

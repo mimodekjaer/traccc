@@ -178,7 +178,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     // prefix sum layerCounts
     collection_types<int>::host layerCounts(m_config.nLayers + 1, m_mr.host);
-    m_copy.get()(vecmem::get_data(ctx.layerCounts_buf), layerCounts)->ignore();
+    m_copy.get()(vecmem::get_data(ctx.layerCounts_buf), layerCounts)->wait();
     
     //std::inclusive_scan(layerCounts.begin(), layerCounts.end(), layerCounts.begin()); // Mabye use a GPU version of a scan?
     for (size_t layer = 0; layer < m_config.nLayers; layer++) {
@@ -566,7 +566,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     collection_types<unsigned int>::host nStats(3, m_mr.host);
 
-    m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)->ignore();
+    m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)->wait();
     nStats[0] = h_counters[0];
     nStats[1] = h_counters[1];
     nStats[2] = h_counters[2];
