@@ -88,9 +88,15 @@ struct Tracklet {
  * for the number of active edges
  */
 __global__ static void CCA_IterationKernel(
-    const collection_types<int>::const_view d_output_graph_view, const collection_types<char>::view d_levels_view, const collection_types<int>::view d_active_edges_view,
-    const collection_types<short2>::view d_outgoing_paths_view, const collection_types<unsigned int>::view d_counters_view, int iter,
-    unsigned int nEdges, unsigned int max_num_neighbours, int minLevel) {
+    const collection_types<int>::const_view d_output_graph_view, 
+    const collection_types<char>::view d_levels_view, 
+    const collection_types<int>::view d_active_edges_view,
+    const collection_types<short2>::view d_outgoing_paths_view, 
+    const collection_types<unsigned int>::view d_counters_view, 
+    const int iter,
+    const unsigned int nEdges, 
+    const unsigned int max_num_neighbours, 
+    const int minLevel) {
 
     __shared__ unsigned int nEdgesLeft;
     const collection_types<int>::const_device d_output_graph(d_output_graph_view);
@@ -182,7 +188,7 @@ __global__ static void CCA_IterationKernel(
 
 void __global__ count_terminus_edges(const collection_types<short2>::view d_outgoing_paths_view,
                                      const collection_types<unsigned int>::view d_counters_view,
-                                     unsigned int nEdges) {
+                                     const unsigned int nEdges) {
 
     collection_types<short2>::device d_outgoing_paths(d_outgoing_paths_view);
     collection_types<unsigned int>::device d_counters(d_counters_view);
@@ -215,7 +221,7 @@ void __global__ count_terminus_edges(const collection_types<short2>::view d_outg
 
 void __global__ add_terminus_to_path_store(const collection_types<int2>::view d_path_store_view,
                                            const collection_types<short2>::const_view d_outgoing_paths_view,
-                                           unsigned int nEdges) {
+                                           const unsigned int nEdges) {
 
     collection_types<int2>::device d_path_store(d_path_store_view);
     collection_types<short2>::const_device d_outgoing_paths(d_outgoing_paths_view);
@@ -241,10 +247,10 @@ void __global__ fill_path_store(const collection_types<int2>::view d_path_store_
                                 const collection_types<int>::const_view d_output_graph_view,
                                 const collection_types<char>::const_view d_levels_view,
                                 const collection_types<unsigned int>::view d_counters_view,
-                                unsigned int nTerminus,
-                                unsigned int nTerminusPerBlock,
-                                unsigned int max_num_neighbours,
-                                unsigned int nPaths) {
+                                const unsigned int nTerminus,
+                                const unsigned int nTerminusPerBlock,
+                                const unsigned int max_num_neighbours,
+                                const unsigned int nPaths) {
 
     collection_types<int2>::device d_path_store(d_path_store_view);
     const collection_types<int>::const_device d_output_graph(d_output_graph_view);
@@ -565,6 +571,7 @@ inline TRACCC_DEVICE void add_seed_proposal(const int qual, const int path_idx,
                                          const collection_types<unsigned long long int>::view d_edge_bids_view,
                                          const collection_types<int2>::const_view d_path_store_view,
                                          char depth = -1) {
+    
     collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
     collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
     collection_types<unsigned long long int>::device d_edge_bids(d_edge_bids_view);
@@ -586,7 +593,7 @@ inline TRACCC_DEVICE void add_seed_proposal(const int qual, const int path_idx,
         depth--;
 
         unsigned long long int competing_offer =
-            atomicMax(&d_edge_bids[path.x], seed_bid);
+            atomicMax(&d_edge_bids[path.x], seed_bid); /// TODO Change to device atomic max
         if (competing_offer > seed_bid) {
             d_seed_ambiguity[prop_idx] = -1;
         } else if (competing_offer != 0) {
@@ -596,11 +603,17 @@ inline TRACCC_DEVICE void add_seed_proposal(const int qual, const int path_idx,
 }
 
 void __global__ fit_segments(
-    const collection_types<float4>::const_view d_sp_reduced_view, const collection_types<int>::const_view d_output_graph_view, const collection_types<int2>::const_view d_path_store_view,
-    const collection_types<int2>::view d_seed_proposals_view, const collection_types<unsigned long long int>::view d_edge_bids_view,
-    const collection_types<char>::view d_seed_ambiguity_view, const collection_types<unsigned int>::view d_counters_view,
-    unsigned int nTerminusEdges, int minLevel, unsigned int max_num_neighbours,
-    gbts_seed_extraction_params seed_extraction_params) {
+    const collection_types<float4>::const_view d_sp_reduced_view, 
+    const collection_types<int>::const_view d_output_graph_view, 
+    const collection_types<int2>::const_view d_path_store_view,
+    const collection_types<int2>::view d_seed_proposals_view, 
+    const collection_types<unsigned long long int>::view d_edge_bids_view,
+    const collection_types<char>::view d_seed_ambiguity_view, 
+    const collection_types<unsigned int>::view d_counters_view,
+    const unsigned int nTerminusEdges, 
+    const int minLevel, 
+    const unsigned int max_num_neighbours,
+    const gbts_seed_extraction_params seed_extraction_params) {
         
     const collection_types<float4>::const_device d_sp_reduced(d_sp_reduced_view);
     const collection_types<int>::const_device d_output_graph(d_output_graph_view);
@@ -667,11 +680,12 @@ void __global__ fit_segments(
                       d_seed_proposals_view, d_edge_bids_view, d_path_store_view, 1);
 }
 
-void __global__ reset_edge_bids(const collection_types<int2>::const_view d_path_store_view, const collection_types<int2>::view d_seed_proposals_view,
+void __global__ reset_edge_bids(const collection_types<int2>::const_view d_path_store_view, 
+                                const collection_types<int2>::view d_seed_proposals_view,
                                 const collection_types<unsigned long long int>::view d_edge_bids_view,
                                 const collection_types<char>::view d_seed_ambiguity_view,
                                 const collection_types<unsigned int>::view d_counters_view,
-                                int round) {
+                                const int round) {
     
     const collection_types<int2>::const_device d_path_store(d_path_store_view);
     collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
@@ -731,7 +745,7 @@ void __global__ seeds_rebid_for_edges(const collection_types<int2>::const_view d
                                       const collection_types<int2>::view d_seed_proposals_view,
                                       const collection_types<unsigned long long int>::view d_edge_bids_view,
                                       const collection_types<char>::view d_seed_ambiguity_view,
-                                      unsigned int nProps) {
+                                      const unsigned int nProps) {
 
     const collection_types<int2>::const_device d_path_store(d_path_store_view);
     collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
@@ -754,9 +768,13 @@ void __global__ seeds_rebid_for_edges(const collection_types<int2>::const_view d
 }
 
 void __global__ gbts_seed_conversion_kernel(
-    const collection_types<int2>::view d_seed_proposals_view, const collection_types<char>::view d_seed_ambiguity_view, const collection_types<int2>::const_view d_path_store_view,
-    const collection_types<int>::const_view d_output_graph_view, edm::seed_collection::view output_seeds,
-    const unsigned int nProps, const unsigned int max_num_neighbours) {
+    const collection_types<int2>::view d_seed_proposals_view, 
+    const collection_types<char>::view d_seed_ambiguity_view, 
+    const collection_types<int2>::const_view d_path_store_view,
+    const collection_types<int>::const_view d_output_graph_view, 
+    const edm::seed_collection::view output_seeds,
+    const unsigned int nProps, 
+    const unsigned int max_num_neighbours) {
 
     const collection_types<int2>::const_device d_seed_proposals(d_seed_proposals_view);
     const collection_types<char>::const_device d_seed_ambiguity(d_seed_ambiguity_view);

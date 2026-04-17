@@ -31,8 +31,8 @@ using float2 = traccc::cuda::float2;
 using int2 = traccc::cuda::int2;
 using uint4 = traccc::cuda::uint4;
 using short2 = traccc::cuda::short2;
-using float16 = std::float_t; // half; //std::float_t; //std::half; //std::float_t; // Should be float16, but I need to find another version than cuda half
-TRACCC_DEVICE float16 (*habs)(float16) =  fabsf; // fabsf; //
+using float16 = half; // half; //std::float_t; //std::half; //std::float_t; // Should be float16, but I need to find another version than cuda half
+TRACCC_DEVICE float16 (*habs)(float16) =  __habs; // fabsf; //
 
 
 using traccc::cuda::make_int2;
@@ -43,7 +43,7 @@ using traccc::cuda::make_uint4;
 using traccc::cuda::make_short2;
 
 
-struct TRACCC_ALIGN(16) half4 { // should be 8, for the actual float16 type
+struct TRACCC_ALIGN(8) half4 { // should be 8, for the actual float16 type
     float16 x, y, z, w;
 };
 
@@ -317,9 +317,9 @@ __global__ static void graphEdgeMatchingKernel(
         cut_tau_ratio_max =
             static_cast<float16>(d_graph_building_params.cut_tau_ratio_max);
 
-        PI_h = static_cast<float16>(CUDART_PI_F);
-        PI_2_h = static_cast<float16>(2 * CUDART_PI_F);
-        ONE_h = static_cast<float16>(1.0f);
+        PI_h = 3.141592654;
+        PI_2_h = 6.283185307;
+        ONE_h = 1.0;
     }
     barrier().blockBarrier();
 

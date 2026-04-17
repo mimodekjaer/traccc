@@ -129,7 +129,7 @@ __global__ void count_sp_by_layer(
 
 // layerCounts is prefix sumed on CPU inbetween count_sp_by_layer and this
 // kerenel
-__global__ void bin_sp_by_layer(collection_types<float4>::view sp_params_view, collection_types<float4>::const_view reducedSP_view,
+__global__ void bin_sp_by_layer(const collection_types<float4>::view sp_params_view, const collection_types<float4>::const_view reducedSP_view,
                                 const collection_types<int>::view layerCounts_view,
                                 const collection_types<short>::const_view spacepointsLayer_view,
                                 const collection_types<int>::view original_sp_idx_view, const unsigned int nSp) {
@@ -344,10 +344,16 @@ __global__ void eta_phi_prefix_sum_kernel(const collection_types<int>::const_vie
 }
 
 __global__ void node_sorting_kernel(
-    const collection_types<float4>::const_view d_sp_params_view, const collection_types<int>::const_view d_node_eta_index_view,
-    const collection_types<int>::const_view d_node_phi_index_view, const collection_types<int>::view d_phi_cusums_view, const collection_types<float>::view d_node_params_view,
-    const collection_types<int>::view d_node_index_view, const collection_types<int>::const_view d_original_sp_idx_view, const gbts_graph_building_params ap,
-    const unsigned int nNodesPerBlock, const unsigned int nNodes,
+    const collection_types<float4>::const_view d_sp_params_view, 
+    const collection_types<int>::const_view d_node_eta_index_view,
+    const collection_types<int>::const_view d_node_phi_index_view, 
+    const collection_types<int>::view d_phi_cusums_view, 
+    const collection_types<float>::view d_node_params_view,
+    const collection_types<int>::view d_node_index_view, 
+    const collection_types<int>::const_view d_original_sp_idx_view, 
+    const gbts_graph_building_params ap,
+    const unsigned int nNodesPerBlock, 
+    const unsigned int nNodes,
     const unsigned int nPhiBins) {
 
 
