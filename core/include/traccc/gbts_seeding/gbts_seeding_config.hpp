@@ -48,7 +48,7 @@ struct gbts_consts {
     static constexpr unsigned short max_cca_iter = 15;
     // shared memory allocation sizes
     static constexpr unsigned short node_buffer_length = 128;
-    static constexpr unsigned short live_path_buffer = 1048;
+    static constexpr unsigned short live_path_buffer = 1024;
 
     // access into output graph
     static constexpr char node1 = 0;

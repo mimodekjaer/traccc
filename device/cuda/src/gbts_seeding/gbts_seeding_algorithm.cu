@@ -127,11 +127,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     cudaStream_t stream = details::get_stream(m_stream);
     ctx.d_graph_building_params = m_config.graph_building_params;
-    //cudaMalloc(&ctx.d_graph_building_params,
-    //           sizeof(m_config.graph_building_params));
-    //cudaMemcpyAsync(
-    //    ctx.d_graph_building_params, &m_config.graph_building_params,
-    //    sizeof(m_config.graph_building_params), cudaMemcpyHostToDevice);
 
     // 0. bin spacepoints by the maping supplied to config.m_surfaceToLayerMap
     ctx.nSp = m_copy.get().get_size(spacepoints);

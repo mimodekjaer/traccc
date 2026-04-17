@@ -592,8 +592,17 @@ inline TRACCC_DEVICE void add_seed_proposal(const int qual, const int path_idx,
         path = d_path_store[path.y];
         depth--;
 
-        unsigned long long int competing_offer =
-            atomicMax(&d_edge_bids[path.x], seed_bid); /// TODO Change to device atomic max
+        //unsigned long long int competing_offer =
+        //    atomicMax(&d_edge_bids[path.x], seed_bid); /// TODO Change to device atomic max
+        // Workaround for atomicMax being from CPP 26
+        vecmem::device_atomic_ref<unsigned long long int> atomic_bid(d_edge_bids[path.x]);
+        unsigned long long int old_val = atomic_bid.load();
+        while (seed_bid > old_val &&
+            !atomic_bid.compare_exchange_strong(old_val, seed_bid)) {
+            // old_val is updated by compare_exchange_strong on failure, loop retries
+        }
+        unsigned long long int competing_offer = old_val;
+
         if (competing_offer > seed_bid) {
             d_seed_ambiguity[prop_idx] = -1;
         } else if (competing_offer != 0) {
