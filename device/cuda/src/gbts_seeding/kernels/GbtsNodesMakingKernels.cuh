@@ -19,6 +19,7 @@
 #include "traccc/edm/container.hpp"
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
 #include "../../utils/barrier.hpp"
+#include "traccc/gbts_seeding/gbts_types.hpp"
 
 // VecMem include(s).
 #include <vecmem/containers/data/vector_view.hpp>
@@ -30,19 +31,19 @@
 
 namespace traccc::cuda::kernels {
 
-using uint2 = traccc::cuda::uint2;
-using float4 = traccc::cuda::float4;
-using float2 = traccc::cuda::float2;
-using int2 = traccc::cuda::int2;
-using uint4 = traccc::cuda::uint4;
-using short2 = traccc::cuda::short2;
+using uint2 = traccc::uint2;
+using float4 = traccc::float4;
+using float2 = traccc::float2;
+using int2 = traccc::int2;
+using uint4 = traccc::uint4;
+using short2 = traccc::short2;
 
-using traccc::cuda::make_int2;
-using traccc::cuda::make_uint2;
-using traccc::cuda::make_float4;
-using traccc::cuda::make_float2;
-using traccc::cuda::make_uint4;
-using traccc::cuda::make_short2;
+using traccc::make_int2;
+using traccc::make_uint2;
+using traccc::make_float4;
+using traccc::make_float2;
+using traccc::make_uint4;
+using traccc::make_short2;
 
 __global__ void count_sp_by_layer(
     const traccc::edm::spacepoint_collection::const_view spacepoints_view,
@@ -211,7 +212,7 @@ __global__ void node_eta_binning_kernel(const collection_types<float4>::const_vi
     __shared__ float eta_bin_width;
 
     int layerIdx = blockIdx.x;
-
+    if (layerIdx < nLayers){
     if (threadIdx.x == 0) {
         std::pair<int, int> layerInfo = d_layer_info[layerIdx];
         bin0 = layerInfo.first;
@@ -254,6 +255,7 @@ __global__ void node_eta_binning_kernel(const collection_types<float4>::const_vi
             d_node_eta_index[idx] = bin0 + binIdx;
         }
     }
+}
 }
 // TO-DO fuse kernels?
 __global__ void eta_phi_histo_kernel(const collection_types<int>::const_view d_node_phi_index_view,

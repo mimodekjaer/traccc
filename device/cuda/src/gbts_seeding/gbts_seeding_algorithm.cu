@@ -13,12 +13,20 @@
 #include "./kernels/GbtsNodesMakingKernels.cuh"
 #include "traccc/cuda/gbts_seeding/gbts_seeding_algorithm.hpp"
 #include "traccc/edm/container.hpp"
+#include "traccc/gbts_seeding/gbts_types.hpp"
 
 
 // C++ include(s)
 #include <ranges>
 
 namespace traccc::cuda {
+
+using uint2 = traccc::uint2;
+using float4 = traccc::float4;
+using float2 = traccc::float2;
+using int2 = traccc::int2;
+using uint4 = traccc::uint4;
+using short2 = traccc::short2;
 
 struct gbts_ctx {
     // counters

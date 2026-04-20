@@ -17,24 +17,25 @@
 #include "traccc/edm/container.hpp"
 #include <vecmem/memory/device_atomic_ref.hpp>
 #include "../../utils/barrier.hpp"
+#include "traccc/gbts_seeding/gbts_types.hpp"
 
 
 namespace traccc::cuda::kernels {
 
-using uint2 = traccc::cuda::uint2;
-using float4 = traccc::cuda::float4;
-using float2 = traccc::cuda::float2;
-using int2 = traccc::cuda::int2;
-using uint4 = traccc::cuda::uint4;
-using short2 = traccc::cuda::short2;
+using uint2 = traccc::uint2;
+using float4 = traccc::float4;
+using float2 = traccc::float2;
+using int2 = traccc::int2;
+using uint4 = traccc::uint4;
+using short2 = traccc::short2;
 
 
-using traccc::cuda::make_int2;
-using traccc::cuda::make_uint2;
-using traccc::cuda::make_float4;
-using traccc::cuda::make_float2;
-using traccc::cuda::make_uint4;
-using traccc::cuda::make_short2;
+using traccc::make_int2;
+using traccc::make_uint2;
+using traccc::make_float4;
+using traccc::make_float2;
+using traccc::make_uint4;
+using traccc::make_short2;
 
 struct edgeState {
 
@@ -580,7 +581,7 @@ inline TRACCC_DEVICE void add_seed_proposal(const int qual, const int path_idx,
     // new seed bids for its edges
     d_seed_proposals[prop_idx] = make_int2(qual, path_idx);
     d_seed_ambiguity[prop_idx] = 0;
-    __threadfence();  // ensure above proposal info is written before biding
+    //__threadfence();  // ensure above proposal info is written before biding
 
     unsigned long long int seed_bid =
         (static_cast<unsigned long long int>(qual) << 32) |

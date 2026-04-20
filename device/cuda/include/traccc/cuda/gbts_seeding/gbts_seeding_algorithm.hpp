@@ -20,6 +20,7 @@
 
 // GBTS include(s)
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
+#include "traccc/gbts_seeding/gbts_types.hpp"
 
 // VecMem include(s).
 #include <vecmem/utils/copy.hpp>
@@ -30,55 +31,12 @@
 
 namespace traccc::cuda {
 
-struct TRACCC_ALIGN(8) uint2 {
-    unsigned int x, y;
-};
-
-struct TRACCC_ALIGN(8) int2 {
-    int x, y;
-};
-
-struct TRACCC_ALIGN(16) float4 {
-    float x, y, z, w;
-};
-
-struct TRACCC_ALIGN(8) float2 {
-    float x, y;
-};
-
-struct TRACCC_ALIGN(16) uint4 {
-    unsigned int x, y, z, w;
-};
-
-struct TRACCC_ALIGN(4) short2 {
-    short x, y;
-};
-
-inline TRACCC_HOST_DEVICE traccc::cuda::int2 make_int2(const int x, const int y) {
-    return traccc::cuda::int2{x, y};
-}
-
-inline TRACCC_HOST_DEVICE traccc::cuda::float4 make_float4(const float x, const float y, const float z, const float w) {
-    return traccc::cuda::float4{x, y, z, w};
-}
-
-inline TRACCC_HOST_DEVICE traccc::cuda::float2 make_float2(const float x, const float y) {
-    return traccc::cuda::float2{x, y};
-}
-
-inline TRACCC_HOST_DEVICE traccc::cuda::uint2 make_uint2(const unsigned int x, const unsigned int y) {
-    return traccc::cuda::uint2{x, y};
-}
-
-
-inline TRACCC_HOST_DEVICE traccc::cuda::uint4 make_uint4(const unsigned int x, const unsigned int y, const unsigned int z, const unsigned int w) {
-    return traccc::cuda::uint4{x, y, z, w};
-}
-
-inline TRACCC_HOST_DEVICE traccc::cuda::short2 make_short2(const short x, const short y) {
-    return traccc::cuda::short2{x, y};
-}
-
+using uint2 = traccc::uint2;
+using float4 = traccc::float4;
+using float2 = traccc::float2;
+using int2 = traccc::int2;
+using uint4 = traccc::uint4;
+using short2 = traccc::short2;
 
 /// Main algorithm for performing GBTS on an NVIDIA GPU
 ///

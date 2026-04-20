@@ -21,26 +21,27 @@
 #include "traccc/edm/container.hpp"
 #include <vecmem/memory/device_atomic_ref.hpp>
 #include "../../utils/barrier.hpp"
+#include "traccc/gbts_seeding/gbts_types.hpp"
 
 
 namespace traccc::cuda::kernels {
 
-using uint2 = traccc::cuda::uint2;
-using float4 = traccc::cuda::float4;
-using float2 = traccc::cuda::float2;
-using int2 = traccc::cuda::int2;
-using uint4 = traccc::cuda::uint4;
-using short2 = traccc::cuda::short2;
+using uint2 = traccc::uint2;
+using float4 = traccc::float4;
+using float2 = traccc::float2;
+using int2 = traccc::int2;
+using uint4 = traccc::uint4;
+using short2 = traccc::short2;
 using float16 = half; // half; //std::float_t; //std::half; //std::float_t; // Should be float16, but I need to find another version than cuda half
 TRACCC_DEVICE float16 (*habs)(float16) =  __habs; // fabsf; //
 
 
-using traccc::cuda::make_int2;
-using traccc::cuda::make_uint2;
-using traccc::cuda::make_float4;
-using traccc::cuda::make_float2;
-using traccc::cuda::make_uint4;
-using traccc::cuda::make_short2;
+using traccc::make_int2;
+using traccc::make_uint2;
+using traccc::make_float4;
+using traccc::make_float2;
+using traccc::make_uint4;
+using traccc::make_short2;
 
 
 struct TRACCC_ALIGN(8) half4 { // should be 8, for the actual float16 type
