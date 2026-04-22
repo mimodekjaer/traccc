@@ -27,7 +27,7 @@
 #include <vecmem/memory/device_atomic_ref.hpp>
 
 // Detray include(s).
-#include <detray/geometry/barcode.hpp>
+#include <detray/geometry/identifier.hpp>
 
 namespace traccc::cuda::kernels {
 
@@ -77,14 +77,14 @@ __global__ void count_sp_by_layer(
         const auto measurement =
             measurements.at(spacepoint.measurement_index_1());
 
-        detray::geometry::barcode barcode = measurement.surface_link();
+        detray::geometry::identifier geo_id = measurement.surface_link();
 
         // some volume_ids map one to one with layer others need searching
-        if (barcode.volume() > volumeMapSize) {
+        if (geo_id.volume() > volumeMapSize) {
             reducedSP[spIdx].w = -CHAR_MAX - 1;
             continue;  // unconfigured volume
         }
-        short begin_or_bin = volumeToLayerMap[barcode.volume()];
+        short begin_or_bin = volumeToLayerMap[geo_id.volume()];
         if (begin_or_bin == SHRT_MAX) {
             reducedSP[spIdx].w = -CHAR_MAX - 1;
             continue;  // unconfigured volume
@@ -92,7 +92,7 @@ __global__ void count_sp_by_layer(
         unsigned int layerIdx;
         if (begin_or_bin < 0) {
             unsigned int surface_index =
-                static_cast<unsigned int>(barcode.index());
+                static_cast<unsigned int>(geo_id.index());
 
             for (unsigned int surface = -1 * (begin_or_bin + 1);
                  surface < surfaceMapSize; surface++) {
