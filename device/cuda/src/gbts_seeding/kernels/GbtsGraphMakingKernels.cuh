@@ -32,8 +32,8 @@ using float2 = traccc::float2;
 using int2 = traccc::int2;
 using uint4 = traccc::uint4;
 using short2 = traccc::short2;
-using float16 = half; // half; //std::float_t; //std::half; //std::float_t; // Should be float16, but I need to find another version than cuda half
-TRACCC_DEVICE float16 (*habs)(float16) =  __habs; // fabsf; //
+using float16 = std::float_t; // half; //std::float_t; //std::half; //std::float_t; // Should be float16, but I need to find another version than cuda half
+TRACCC_DEVICE float16 (*habs)(float16) =  fabs; // __habs; // fabsf; //
 
 
 using traccc::make_int2;
@@ -44,7 +44,7 @@ using traccc::make_uint4;
 using traccc::make_short2;
 
 
-struct TRACCC_ALIGN(8) half4 { // should be 8, for the actual float16 type
+struct TRACCC_ALIGN(16) half4 { // should be 8, for the actual float16 type
     float16 x, y, z, w;
 };
 

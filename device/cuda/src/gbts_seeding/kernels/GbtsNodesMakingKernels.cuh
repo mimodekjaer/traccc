@@ -287,9 +287,9 @@ __global__ void eta_phi_histo_kernel(const collection_types<int>::const_view d_n
 __global__ void eta_phi_counting_kernel(const collection_types<int>::const_view d_histo_view,
                                         const collection_types<int>::view d_eta_node_counter_view,
                                         const collection_types<int>::view d_phi_cusums_view,
-                                        const unsigned nBinsPerBlock,
-                                        const unsigned maxEtaBin,
-                                        const unsigned nPhiBins) {
+                                        const unsigned int nBinsPerBlock,
+                                        const unsigned int maxEtaBin,
+                                        const unsigned int nPhiBins) {
 
     const collection_types<int>::const_device d_histo(d_histo_view);
     collection_types<int>::device d_eta_node_counter(d_eta_node_counter_view);

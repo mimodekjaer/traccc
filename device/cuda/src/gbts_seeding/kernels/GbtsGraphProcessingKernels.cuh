@@ -597,7 +597,7 @@ inline TRACCC_DEVICE void add_seed_proposal(const int qual, const int path_idx,
         //    atomicMax(&d_edge_bids[path.x], seed_bid); /// TODO Change to device atomic max
         // Workaround for atomicMax being from CPP 26
         vecmem::device_atomic_ref<unsigned long long int> atomic_bid(d_edge_bids[path.x]);
-        unsigned long long int old_val = atomic_bid.load();
+        unsigned long long int old_val = atomic_bid.load(); // replace with fetch_max when in vecmem
         while (seed_bid > old_val &&
             !atomic_bid.compare_exchange_strong(old_val, seed_bid)) {
             // old_val is updated by compare_exchange_strong on failure, loop retries
