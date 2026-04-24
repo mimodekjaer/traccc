@@ -777,8 +777,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     unsigned int path_sizes[2];
     cudaMemcpyAsync(&path_sizes[0], &ctx.d_counters[6],
                     2 * sizeof(unsigned int), cudaMemcpyDeviceToHost, stream);
-    unsigned int pathsPerTerminus = 1 + (path_sizes[0] - 1) / path_sizes[1];
-
     TRACCC_DEBUG(path_sizes[0] << "size of path store | nTerminusEdges "
                                << path_sizes[1]);
 
@@ -798,15 +796,29 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         ctx.d_path_store, ctx.d_outgoing_paths, ctx.d_counters,
         ctx.nConnectedEdges);
 
-    unsigned int terminusPerBlock = std::min(
-        nThreads, 1 + (traccc::device::gbts_consts::live_path_buffer - 1) /
-                          pathsPerTerminus);
-    nBlocks = 1 + (path_sizes[1] - 1) / terminusPerBlock;
+    // Flat level-synchronous BFS: one launch per graph level. Each launch
+    // expands the current frontier [level_start, level_end) in d_path_store;
+    // children are appended via the d_counters[7] atomic, so the new frontier
+    // is [level_end, d_counters[7]). Stops when no new paths were added.
+    const unsigned int nPaths = path_sizes[0] + path_sizes[1];
+    unsigned int level_start = 0;
+    unsigned int level_end = path_sizes[1];
+    nThreads = 128;
+    while (level_end > level_start) {
+        unsigned int n_in_level = level_end - level_start;
+        nBlocks = 1 + (n_in_level - 1) / nThreads;
 
-    kernels::fill_path_store<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.d_path_store, ctx.d_output_graph, ctx.d_levels, ctx.d_counters,
-        path_sizes[1], terminusPerBlock, m_config.max_num_neighbours,
-        path_sizes[0] + path_sizes[1]);
+        kernels::fill_path_store_level<<<nBlocks, nThreads, 0, stream>>>(
+            ctx.d_path_store, ctx.d_output_graph, ctx.d_levels, ctx.d_counters,
+            level_start, level_end, m_config.max_num_neighbours, nPaths);
+
+        unsigned int new_end;
+        cudaMemcpyAsync(&new_end, &ctx.d_counters[7], sizeof(unsigned int),
+                        cudaMemcpyDeviceToHost, stream);
+        cudaStreamSynchronize(stream);
+        level_start = level_end;
+        level_end = new_end > nPaths ? nPaths : new_end;
+    }
 
     nThreads = 128;
     nBlocks = 1 + (path_sizes[0] + path_sizes[1] - 1) / nThreads;

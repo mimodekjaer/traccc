@@ -208,97 +208,45 @@ void __global__ add_terminus_to_path_store(int2* d_path_store,
 // The paths order the edges in reverse order compared to graph linking
 // extracting all paths here allows for fitting to occor down know paths in
 // registers
-void __global__ fill_path_store(int2* d_path_store, int* d_output_graph,
-                                char* d_levels, unsigned int* d_counters,
-                                unsigned int nTerminus,
-                                unsigned int nTerminusPerBlock,
-                                unsigned int max_num_neighbours,
-                                unsigned int nPaths) {
+//
+// Flat level-synchronous BFS: one launch per graph level. Each thread owns one
+// slot in [level_start, level_end) of d_path_store and expands its children by
+// writing them back into d_path_store via an atomic on d_counters[7]. The slot
+// index `i` of the parent is itself the link-back for the children, so no
+// shared-memory stack is required. The host reads d_counters[7] back between
+// launches to find the new frontier end and stops when nothing new was added.
+void __global__ fill_path_store_level(int2* d_path_store, int* d_output_graph,
+                                      char* d_levels,
+                                      unsigned int* d_counters,
+                                      unsigned int level_start,
+                                      unsigned int level_end,
+                                      unsigned int max_num_neighbours,
+                                      unsigned int nPaths) {
 
-    __shared__ int2 live_paths[traccc::device::gbts_consts::live_path_buffer];
-    __shared__ int n_live_paths;
-
-    if (threadIdx.x == 0) {
-        n_live_paths = 0;
+    unsigned int i = level_start + threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= level_end) {
+        return;
     }
-    __syncthreads();
 
     int edge_size = 2 + 1 + max_num_neighbours;
-    unsigned int path_idx = threadIdx.x + blockIdx.x * nTerminusPerBlock;
-    // populate live_paths with terminus to start exploration from
-    if (threadIdx.x < nTerminusPerBlock && path_idx < nTerminus) {
-        int2 path = d_path_store[path_idx];
-        int nNei = d_output_graph[traccc::device::gbts_consts::nNei +
-                                  edge_size * path.x];
-        char level = d_levels[path.x];
-        for (int nei = 0; nei < nNei; ++nei) {
-            int edge_idx =
-                d_output_graph[traccc::device::gbts_consts::nei_start + nei +
-                               edge_size * path.x];
-            // only search down longest path
-            if (level != d_levels[edge_idx] + 1) {
-                continue;
-            }
-            int live_idx = atomicAdd(&n_live_paths, 1);
-            if (live_idx >= traccc::device::gbts_consts::live_path_buffer) {
-                break;
-            }
-            int new_path_idx = atomicAdd(&d_counters[7], 1);
-            // head edge idx, link back
-            d_path_store[new_path_idx] = make_int2(edge_idx, path_idx);
-            live_paths[live_idx] = make_int2(edge_idx, new_path_idx);
+    int2 path = d_path_store[i];
+    int nNei = d_output_graph[traccc::device::gbts_consts::nNei +
+                              edge_size * path.x];
+    char level = d_levels[path.x];
+    for (int nei = 0; nei < nNei; ++nei) {
+        int edge_idx =
+            d_output_graph[traccc::device::gbts_consts::nei_start + nei +
+                           edge_size * path.x];
+        // only search down longest segments
+        if (level != d_levels[edge_idx] + 1) {
+            continue;
         }
-    }
-    __syncthreads();
-
-    int2 path = make_int2(0, 0);
-    bool has_path = false;
-
-    while (n_live_paths > 0) {
-        has_path = false;
-        if (threadIdx.x == 0) {
-            n_live_paths = min(n_live_paths,
-                               traccc::device::gbts_consts::live_path_buffer);
+        unsigned int new_path_idx = atomicAdd(&d_counters[7], 1);
+        if (new_path_idx >= nPaths) {
+            break;
         }
-        __syncthreads();
-        // get path
-        if (threadIdx.x < n_live_paths) {
-            path = live_paths[n_live_paths - threadIdx.x - 1];
-            has_path = true;
-        }
-        __syncthreads();
-        if (threadIdx.x == 0) {
-            n_live_paths =
-                n_live_paths < blockDim.x ? 0 : n_live_paths - blockDim.x;
-        }
-        __syncthreads();
-        if (has_path) {
-            int nNei = d_output_graph[traccc::device::gbts_consts::nNei +
-                                      edge_size * path.x];
-            char level = d_levels[path.x];
-            for (int nei = 0; nei < nNei; ++nei) {
-                int edge_idx =
-                    d_output_graph[traccc::device::gbts_consts::nei_start +
-                                   nei + edge_size * path.x];
-                // only search down longest segments
-                if (level != d_levels[edge_idx] + 1) {
-                    continue;
-                }
-                path_idx = atomicAdd(&d_counters[7], 1);
-                if (path_idx >= nPaths) {
-                    break;
-                }
-                int live_idx = atomicAdd(&n_live_paths, 1);
-                if (live_idx >= traccc::device::gbts_consts::live_path_buffer) {
-                    break;
-                }
-                // head edge idx, link back
-                d_path_store[path_idx] = make_int2(edge_idx, path.y);
-                live_paths[live_idx] = make_int2(edge_idx, path_idx);
-            }
-        }
-        // wait for live_paths to repopulate
-        __syncthreads();
+        // head edge idx, link back to this slot
+        d_path_store[new_path_idx] = make_int2(edge_idx, static_cast<int>(i));
     }
 }
 
