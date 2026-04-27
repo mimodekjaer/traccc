@@ -351,7 +351,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     ctx.bin_rads = collection_types<float>::host(2 * m_config.n_eta_bins, m_mr.host);
     m_copy.get()(vecmem::get_data(ctx.bin_rads_buf), ctx.bin_rads)->wait();
 
-    cudaStreamSynchronize(stream);
+    //cudaStreamSynchronize(stream);
 
     // 2. prepare input for the graph making part of the code:
 
@@ -445,7 +445,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     TRACCC_DEBUG("nUsedBinPairs " << ctx.nUsedBinPairs);
     if (ctx.nUsedBinPairs == 0)
         return {0, m_mr.main};
-    //ctx.eta_bin_views.reset();
     // allocate memory and copy bin pair views and phi cuts to GPU
 
     ctx.bin_pair_views_buf = collection_types<int>::buffer(4*ctx.nUsedBinPairs, m_mr.main);
@@ -504,9 +503,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     collection_types<int>::host cusum(ctx.nNodes + 1, m_mr.host);
 
-    m_copy.get()(vecmem::get_data(ctx.num_incoming_edges_buf), cusum)->ignore();
-
-    cudaStreamSynchronize(stream);
+    m_copy.get()(vecmem::get_data(ctx.num_incoming_edges_buf), cusum)->wait();
 
     for (unsigned int k = 0; k < ctx.nNodes; k++){ // TODO: Maybe use a GPU version of a scan? or std version?
         cusum[k + 1] += cusum[k];
@@ -657,8 +654,6 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     path_sizes[0] = h_counters[6];
     path_sizes[1] = h_counters[7];
 
-    unsigned int pathsPerTerminus = 1 + (path_sizes[0] - 1) / path_sizes[1];
-
     TRACCC_DEBUG(path_sizes[0] << "size of path store | nTerminusEdges "
                                << path_sizes[1]);
 
@@ -678,15 +673,30 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         ctx.path_store_buf, ctx.outgoing_paths_buf,
         ctx.nConnectedEdges);
 
-    unsigned int terminusPerBlock = std::min(
-        nThreads, 1 + (traccc::device::gbts_consts::live_path_buffer - 1) /
-                          pathsPerTerminus);
-    nBlocks = 1 + (path_sizes[1] - 1) / terminusPerBlock;
-    
-    kernels::fill_path_store<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.path_store_buf, ctx.output_graph_buf, ctx.levels_buf, ctx.counters_buf,
-        path_sizes[1], terminusPerBlock, m_config.max_num_neighbours,
-        path_sizes[0] + path_sizes[1]);
+    // Flat level-synchronous BFS: one launch per graph level. Each launch
+    // expands the current frontier [level_start, level_end) in d_path_store;
+    // children are appended via the d_counters[7] atomic, so the new frontier
+    // is [level_end, d_counters[7]).
+    const unsigned int nPaths = path_sizes[0] + path_sizes[1];
+    unsigned int level_start = 0;
+    unsigned int level_end = path_sizes[1];
+    nThreads = 128;
+    while (level_end > level_start) {
+        unsigned int n_in_level = level_end - level_start;
+        nBlocks = 1 + (n_in_level - 1) / nThreads;
+
+        kernels::fill_path_store_level<<<nBlocks, nThreads, 0, stream>>>(
+            ctx.path_store_buf, ctx.output_graph_buf, ctx.levels_buf,
+            ctx.counters_buf, level_start, level_end,
+            m_config.max_num_neighbours, nPaths);
+
+        m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)->wait();
+        level_start = level_end;
+        level_end = h_counters[7];
+        if (level_end > nPaths) {
+            level_end = nPaths;
+        }
+    }
 
     nThreads = 128;
     nBlocks = 1 + (path_sizes[0] + path_sizes[1] - 1) / nThreads;

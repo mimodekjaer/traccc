@@ -244,105 +244,68 @@ void __global__ add_terminus_to_path_store(const collection_types<int2>::view d_
 // The paths order the edges in reverse order compared to graph linking
 // extracting all paths here allows for fitting to occor down know paths in
 // registers
-void __global__ fill_path_store(const collection_types<int2>::view d_path_store_view,
-                                const collection_types<int>::const_view d_output_graph_view,
-                                const collection_types<char>::const_view d_levels_view,
-                                const collection_types<unsigned int>::view d_counters_view,
-                                const unsigned int nTerminus,
-                                const unsigned int nTerminusPerBlock,
-                                const unsigned int max_num_neighbours,
-                                const unsigned int nPaths) {
+//
+// Flat level-synchronous BFS: one launch per graph level. Each thread owns one
+// slot in [level_start, level_end) of d_path_store and expands its children by
+// writing them back into d_path_store via an atomic on d_counters[7]. The slot
+// index `i` of the parent is itself the link-back for the children, so no
+// shared-memory stack is required.
+//
+// The frontier [level_start, level_end) lives in d_counters[10]/[11] so the
+// host never has to read it back between launches. `advance_path_frontier`
+// slides the frontier forward on the device.
+void __global__ fill_path_store_level(const collection_types<int2>::view d_path_store_view,
+                                      const collection_types<int>::const_view d_output_graph_view,
+                                      const collection_types<char>::const_view d_levels_view,
+                                      const collection_types<unsigned int>::view d_counters_view,
+                                      const unsigned int max_num_neighbours,
+                                      const unsigned int nPaths) {
 
     collection_types<int2>::device d_path_store(d_path_store_view);
     const collection_types<int>::const_device d_output_graph(d_output_graph_view);
     const collection_types<char>::const_device d_levels(d_levels_view);
     collection_types<unsigned int>::device d_counters(d_counters_view);
 
-    __shared__ int2 live_paths[traccc::device::gbts_consts::live_path_buffer];
-    __shared__ int n_live_paths;
+    unsigned int level_start = d_counters[10];
+    unsigned int level_end = d_counters[11];
 
-    if (threadIdx.x == 0) {
-        n_live_paths = 0;
+    unsigned int i = level_start + threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= level_end) {
+        return;
     }
-    barrier().blockBarrier();
 
     int edge_size = 2 + 1 + max_num_neighbours;
-    unsigned int path_idx = threadIdx.x + blockIdx.x * nTerminusPerBlock;
-    // populate live_paths with terminus to start exploration from
-    if (threadIdx.x < nTerminusPerBlock && path_idx < nTerminus) {
-        int2 path = d_path_store[path_idx];
-        int nNei = d_output_graph[traccc::device::gbts_consts::nNei +
-                                  edge_size * path.x];
-        char level = d_levels[path.x];
-        for (int nei = 0; nei < nNei; ++nei) {
-            int edge_idx =
-                d_output_graph[traccc::device::gbts_consts::nei_start + nei +
-                               edge_size * path.x];
-            // only search down longest path
-            if (level != d_levels[edge_idx] + 1) {
-                continue;
-            }
-            int live_idx = vecmem::device_atomic_ref<int>(n_live_paths).fetch_add(1);
-            if (live_idx >= traccc::device::gbts_consts::live_path_buffer) {
-                break;
-            }
-            int new_path_idx = vecmem::device_atomic_ref<unsigned int>(d_counters[7]).fetch_add(1);
-            // head edge idx, link back
-            d_path_store[new_path_idx] = make_int2(edge_idx, path_idx);
-            live_paths[live_idx] = make_int2(edge_idx, new_path_idx);
+    int2 path = d_path_store[i];
+    int nNei = d_output_graph[traccc::device::gbts_consts::nNei +
+                              edge_size * path.x];
+    char level = d_levels[path.x];
+    for (int nei = 0; nei < nNei; ++nei) {
+        int edge_idx =
+            d_output_graph[traccc::device::gbts_consts::nei_start + nei +
+                           edge_size * path.x];
+        // only search down longest segments
+        if (level != d_levels[edge_idx] + 1) {
+            continue;
         }
+        unsigned int new_path_idx =
+            vecmem::device_atomic_ref<unsigned int>(d_counters[7]).fetch_add(1);
+        if (new_path_idx >= nPaths) {
+            break;
+        }
+        // head edge idx, link back to this slot
+        d_path_store[new_path_idx] = make_int2(edge_idx, static_cast<int>(i));
     }
-    barrier().blockBarrier();
+}
 
-    int2 path = make_int2(0, 0);
-    bool has_path = false;
+// Slide the BFS frontier forward on the device: the old end becomes the new
+// start, the current write frontier (d_counters[7]) becomes the new end.
+// Initial state is (0, 0); the first call sets the frontier to (0, nTerminus).
+void __global__ advance_path_frontier(
+    const collection_types<unsigned int>::view d_counters_view) {
 
-    while (n_live_paths > 0) {
-        has_path = false;
-        if (threadIdx.x == 0) {
-            n_live_paths = min(n_live_paths,
-                               traccc::device::gbts_consts::live_path_buffer);
-        }
-        barrier().blockBarrier();
-        // get path
-        if (threadIdx.x < n_live_paths) {
-            path = live_paths[n_live_paths - threadIdx.x - 1];
-            has_path = true;
-        }
-        barrier().blockBarrier();
-        if (threadIdx.x == 0) {
-            n_live_paths =
-                n_live_paths < blockDim.x ? 0 : n_live_paths - blockDim.x;
-        }
-        barrier().blockBarrier();
-        if (has_path) {
-            int nNei = d_output_graph[traccc::device::gbts_consts::nNei +
-                                      edge_size * path.x];
-            char level = d_levels[path.x];
-            for (int nei = 0; nei < nNei; ++nei) {
-                int edge_idx =
-                    d_output_graph[traccc::device::gbts_consts::nei_start +
-                                   nei + edge_size * path.x];
-                // only search down longest segments
-                if (level != d_levels[edge_idx] + 1) {
-                    continue;
-                }
-                path_idx = vecmem::device_atomic_ref<unsigned int>(d_counters[7]).fetch_add(1);
-                if (path_idx >= nPaths) {
-                    break;
-                }
-                int live_idx = vecmem::device_atomic_ref<int>(n_live_paths).fetch_add(1);
-                if (live_idx >= traccc::device::gbts_consts::live_path_buffer) {
-                    break;
-                }
-                // head edge idx, link back
-                d_path_store[path_idx] = make_int2(edge_idx, path.y);
-                live_paths[live_idx] = make_int2(edge_idx, path_idx);
-            }
-        }
-        // wait for live_paths to repopulate
-        barrier().blockBarrier();
-    }
+    collection_types<unsigned int>::device d_counters(d_counters_view);
+    d_counters[10] = d_counters[11];
+    d_counters[11] = d_counters[7];
 }
 
 /** @brief initialize the Kalman filter for this new edgeState from the starting
