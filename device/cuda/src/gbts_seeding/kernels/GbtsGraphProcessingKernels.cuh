@@ -258,6 +258,8 @@ void __global__ fill_path_store_level(const collection_types<int2>::view d_path_
                                       const collection_types<int>::const_view d_output_graph_view,
                                       const collection_types<char>::const_view d_levels_view,
                                       const collection_types<unsigned int>::view d_counters_view,
+                                      const unsigned int level_start,
+                                      const unsigned int level_end,
                                       const unsigned int max_num_neighbours,
                                       const unsigned int nPaths) {
 
@@ -265,9 +267,6 @@ void __global__ fill_path_store_level(const collection_types<int2>::view d_path_
     const collection_types<int>::const_device d_output_graph(d_output_graph_view);
     const collection_types<char>::const_device d_levels(d_levels_view);
     collection_types<unsigned int>::device d_counters(d_counters_view);
-
-    unsigned int level_start = d_counters[10];
-    unsigned int level_end = d_counters[11];
 
     unsigned int i = level_start + threadIdx.x + blockIdx.x * blockDim.x;
     if (i >= level_end) {
