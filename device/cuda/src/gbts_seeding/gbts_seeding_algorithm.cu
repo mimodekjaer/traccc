@@ -815,7 +815,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         unsigned int new_end;
         cudaMemcpyAsync(&new_end, &ctx.d_counters[7], sizeof(unsigned int),
                         cudaMemcpyDeviceToHost, stream);
-        cudaStreamSynchronize(stream);
+        //cudaStreamSynchronize(stream);
         level_start = level_end;
         level_end = new_end > nPaths ? nPaths : new_end;
     }
