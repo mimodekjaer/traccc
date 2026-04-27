@@ -767,8 +767,11 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     cudaStreamSynchronize(stream);
 
+    int* d_terminus_edge_idx = nullptr;
+    cudaMalloc(&d_terminus_edge_idx, ctx.nConnectedEdges * sizeof(int));
+
     kernels::count_terminus_edges<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.d_path_store, ctx.d_outgoing_paths, ctx.d_counters,
+        ctx.d_outgoing_paths, d_terminus_edge_idx, ctx.d_counters,
         ctx.nConnectedEdges);
 
     cudaStreamSynchronize(stream);
@@ -792,9 +795,11 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
                     stream);
 
     nThreads = 128;
+    nBlocks = 1 + (path_sizes[1] - 1) / nThreads;
     kernels::add_terminus_to_path_store<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.d_path_store, ctx.d_outgoing_paths, ctx.d_counters,
-        ctx.nConnectedEdges);
+        ctx.d_path_store, d_terminus_edge_idx, path_sizes[1]);
+
+    cudaFree(d_terminus_edge_idx);
 
     // Flat level-synchronous BFS: one launch per graph level. Each launch
     // expands the current frontier [level_start, level_end) in d_path_store;
@@ -806,7 +811,8 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     nThreads = 128;
     while (level_end > level_start) {
         unsigned int n_in_level = level_end - level_start;
-        nBlocks = 1 + (n_in_level - 1) / nThreads;
+        unsigned int n_threads_total = n_in_level * m_config.max_num_neighbours;
+        nBlocks = 1 + (n_threads_total - 1) / nThreads;
 
         kernels::fill_path_store_level<<<nBlocks, nThreads, 0, stream>>>(
             ctx.d_path_store, ctx.d_output_graph, ctx.d_levels, ctx.d_counters,
@@ -815,7 +821,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         unsigned int new_end;
         cudaMemcpyAsync(&new_end, &ctx.d_counters[7], sizeof(unsigned int),
                         cudaMemcpyDeviceToHost, stream);
-        //cudaStreamSynchronize(stream);
+        cudaStreamSynchronize(stream);
         level_start = level_end;
         level_end = new_end > nPaths ? nPaths : new_end;
     }

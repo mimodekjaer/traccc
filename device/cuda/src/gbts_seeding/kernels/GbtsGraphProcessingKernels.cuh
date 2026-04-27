@@ -155,8 +155,8 @@ __global__ static void CCA_IterationKernel(
     }
 }
 
-void __global__ count_terminus_edges(int2* d_path_store,
-                                     short2* d_outgoing_paths,
+void __global__ count_terminus_edges(short2* d_outgoing_paths,
+                                     int* d_terminus_edge_idx,
                                      unsigned int* d_counters,
                                      unsigned int nEdges) {
 
@@ -172,11 +172,11 @@ void __global__ count_terminus_edges(int2* d_path_store,
     if (edge_idx < nEdges) {
 
         short2 out_paths = d_outgoing_paths[edge_idx];
-        // only count terminus edges that could lead to a seed
-        // fill the first part of path_store so fitting can skip go-nowhere
-        // paths
+        // only count terminus edges that could lead to a seed; build a
+        // compact list so the next kernel can launch one thread per terminus
         if (out_paths.y != -1) {
-            d_outgoing_paths[edge_idx].y = atomicAdd(&d_counters[7], 1);
+            unsigned int slot = atomicAdd(&d_counters[7], 1);
+            d_terminus_edge_idx[slot] = edge_idx;
             atomicAdd(&outgoingCount, out_paths.x);
         }
     }
@@ -187,20 +187,15 @@ void __global__ count_terminus_edges(int2* d_path_store,
 }
 
 void __global__ add_terminus_to_path_store(int2* d_path_store,
-                                           short2* d_outgoing_paths,
-                                           unsigned int* d_counters,
-                                           unsigned int nEdges) {
+                                           const int* d_terminus_edge_idx,
+                                           unsigned int nTerminusEdges) {
 
-    int edge_idx = threadIdx.x + blockIdx.x * blockDim.x;
-    if (edge_idx >= nEdges) {
-        return;
-    }
-    short2 out_paths = d_outgoing_paths[edge_idx];
-    if (out_paths.y == -1) {
+    unsigned int slot = threadIdx.x + blockIdx.x * blockDim.x;
+    if (slot >= nTerminusEdges) {
         return;
     }
     // -1 flags as the terminus of a path
-    d_path_store[out_paths.y] = make_int2(edge_idx, -1);
+    d_path_store[slot] = make_int2(d_terminus_edge_idx[slot], -1);
 }
 
 // each node in the path_store defines a unique path through the graph
@@ -223,7 +218,10 @@ void __global__ fill_path_store_level(int2* d_path_store, int* d_output_graph,
                                       unsigned int max_num_neighbours,
                                       unsigned int nPaths) {
 
-    unsigned int i = level_start + threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int parent_off = tid / max_num_neighbours;
+    unsigned int nei = tid % max_num_neighbours;
+    unsigned int i = level_start + parent_off;
     if (i >= level_end) {
         return;
     }
@@ -232,22 +230,21 @@ void __global__ fill_path_store_level(int2* d_path_store, int* d_output_graph,
     int2 path = d_path_store[i];
     int nNei = d_output_graph[traccc::device::gbts_consts::nNei +
                               edge_size * path.x];
-    char level = d_levels[path.x];
-    for (int nei = 0; nei < nNei; ++nei) {
-        int edge_idx =
-            d_output_graph[traccc::device::gbts_consts::nei_start + nei +
-                           edge_size * path.x];
-        // only search down longest segments
-        if (level != d_levels[edge_idx] + 1) {
-            continue;
-        }
-        unsigned int new_path_idx = atomicAdd(&d_counters[7], 1);
-        if (new_path_idx >= nPaths) {
-            break;
-        }
-        // head edge idx, link back to this slot
-        d_path_store[new_path_idx] = make_int2(edge_idx, static_cast<int>(i));
+    if (static_cast<int>(nei) >= nNei) {
+        return;
     }
+    int edge_idx = d_output_graph[traccc::device::gbts_consts::nei_start + nei +
+                                  edge_size * path.x];
+    // only search down longest segments
+    if (d_levels[path.x] != d_levels[edge_idx] + 1) {
+        return;
+    }
+    unsigned int new_path_idx = atomicAdd(&d_counters[7], 1);
+    if (new_path_idx >= nPaths) {
+        return;
+    }
+    // head edge idx, link back to this slot
+    d_path_store[new_path_idx] = make_int2(edge_idx, static_cast<int>(i));
 }
 
 /** @brief initialize the Kalman filter for this new edgeState from the starting
