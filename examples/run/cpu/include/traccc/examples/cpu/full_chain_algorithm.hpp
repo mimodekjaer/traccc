@@ -160,8 +160,6 @@ class full_chain_algorithm
 
     const bool usingGBTS;
 
-    const bool usingGBTS;
-
     /// @}
 };  // class full_chain_algorithm
 

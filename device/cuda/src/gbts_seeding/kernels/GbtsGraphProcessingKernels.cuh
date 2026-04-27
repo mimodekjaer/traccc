@@ -194,9 +194,6 @@ void __global__ count_terminus_edges(const collection_types<short2>::view d_outg
     collection_types<short2>::device d_outgoing_paths(d_outgoing_paths_view);
     collection_types<unsigned int>::device d_counters(d_counters_view);
 
-    collection_types<short2>::device d_outgoing_paths(d_outgoing_paths_view);
-    collection_types<unsigned int>::device d_counters(d_counters_view);
-
     // count in shared first to reduce global atomics
     __shared__ int outgoingCount;
 
@@ -230,9 +227,6 @@ void __global__ add_terminus_to_path_store(const collection_types<int2>::view d_
     collection_types<int2>::device d_path_store(d_path_store_view);
     collection_types<short2>::const_device d_outgoing_paths(d_outgoing_paths_view);
 
-    collection_types<int2>::device d_path_store(d_path_store_view);
-    collection_types<short2>::const_device d_outgoing_paths(d_outgoing_paths_view);
-
     int edge_idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (edge_idx >= nEdges) {
         return;
@@ -262,11 +256,6 @@ void __global__ fill_path_store(const collection_types<int2>::view d_path_store_
     collection_types<int2>::device d_path_store(d_path_store_view);
     const collection_types<int>::const_device d_output_graph(d_output_graph_view);
     const collection_types<char>::const_device d_levels(d_levels_view);
-    collection_types<unsigned int>::device d_counters(d_counters_view);
-
-    collection_types<int2>::device d_path_store(d_path_store_view);
-    collection_types<int>::const_device d_output_graph(d_output_graph_view);
-    collection_types<char>::const_device d_levels(d_levels_view);
     collection_types<unsigned int>::device d_counters(d_counters_view);
 
     __shared__ int2 live_paths[traccc::device::gbts_consts::live_path_buffer];
@@ -773,11 +762,6 @@ void __global__ seeds_rebid_for_edges(const collection_types<int2>::const_view d
     collection_types<unsigned long long int>::device d_edge_bids(d_edge_bids_view);
     collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
 
-    collection_types<int2>::const_device d_path_store(d_path_store_view);
-    collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
-    collection_types<unsigned long long int>::device d_edge_bids(d_edge_bids_view);
-    collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
-
     for (int prop_idx = threadIdx.x + blockIdx.x * blockDim.x;
          prop_idx < nProps; prop_idx += blockDim.x * gridDim.x) {
 
@@ -806,11 +790,6 @@ void __global__ gbts_seed_conversion_kernel(
     const collection_types<char>::const_device d_seed_ambiguity(d_seed_ambiguity_view);
     const collection_types<int2>::const_device d_path_store(d_path_store_view);
     const collection_types<int>::const_device d_output_graph(d_output_graph_view);
-
-    collection_types<int2>::const_device d_seed_proposals(d_seed_proposals_view);
-    collection_types<char>::const_device d_seed_ambiguity(d_seed_ambiguity_view);
-    collection_types<int2>::const_device d_path_store(d_path_store_view);
-    collection_types<int>::const_device d_output_graph(d_output_graph_view);
 
     int edge_size = 2 + 1 + max_num_neighbours;
     edm::seed_collection::device seeds_device(output_seeds);
