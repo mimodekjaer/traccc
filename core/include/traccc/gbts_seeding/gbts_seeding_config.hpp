@@ -148,7 +148,7 @@ struct gbts_seedfinder_config {
     unsigned int nLayers = 0;
 
     std::vector<short> volumeToLayerMap{};
-    std::vector<std::array<unsigned int, 2>> surfaceToLayerMap{};
+    std::vector<std::pair<unsigned int, unsigned int>> surfaceToLayerMap{};
 
     // tuned for 900 MeV pT cut and scaled by input minPt
     gbts_graph_building_params graph_building_params{};

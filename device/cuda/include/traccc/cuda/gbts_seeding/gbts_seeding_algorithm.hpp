@@ -20,6 +20,7 @@
 
 // GBTS include(s)
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
+#include "traccc/gbts_seeding/gbts_types.hpp"
 
 // VecMem include(s).
 #include <vecmem/utils/copy.hpp>
@@ -28,6 +29,13 @@
 #include <memory>
 
 namespace traccc::cuda {
+
+using uint2 = traccc::uint2;
+using float4 = traccc::float4;
+using float2 = traccc::float2;
+using int2 = traccc::int2;
+using uint4 = traccc::uint4;
+using short2 = traccc::short2;
 
 /// Main algorithm for performing GBTS on an NVIDIA GPU
 ///
