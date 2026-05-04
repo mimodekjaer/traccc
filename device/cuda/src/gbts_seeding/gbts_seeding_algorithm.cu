@@ -15,7 +15,6 @@
 #include "traccc/edm/container.hpp"
 #include "traccc/gbts_seeding/gbts_types.hpp"
 
-
 // C++ include(s)
 #include <ranges>
 
@@ -50,7 +49,8 @@ struct gbts_ctx {
     collection_types<short>::buffer spacepointsLayer_buf;
     // begin_idx + 1 for the surfaceToLayerMap or -layerBin if one to one
     collection_types<short>::buffer volumeToLayerMap_buf;
-    collection_types<std::pair<unsigned int, unsigned int>>::buffer surfaceToLayerMap_buf;  // surface_index, layerBin
+    collection_types<std::pair<unsigned int, unsigned int>>::buffer
+        surfaceToLayerMap_buf;  // surface_index, layerBin
     collection_types<char>::buffer layerType_buf;
     // conversion to original sp from post layer binning index
     collection_types<int>::buffer original_sp_idx_buf;
@@ -63,7 +63,7 @@ struct gbts_ctx {
     collection_types<float4>::buffer sp_params_buf;
 
     collection_types<std::pair<int, int>>::buffer layer_info_buf;
-    collection_types<std::pair<float, float>>::buffer layer_geo_buf; 
+    collection_types<std::pair<float, float>>::buffer layer_geo_buf;
 
     collection_types<int>::buffer node_eta_index_buf;
     collection_types<int>::buffer node_phi_index_buf;
@@ -110,7 +110,8 @@ struct gbts_ctx {
 
     // edge_idx and prev path_store idx forms a uniuqe path through the graph
     collection_types<int2>::buffer path_store_buf;
-    collection_types<int2>::buffer seed_proposals_buf;  // int quality and final mini_state_idx
+    collection_types<int2>::buffer
+        seed_proposals_buf;  // int quality and final mini_state_idx
     // first 32 bits are seed quality second 32 bits are seed_proposals index
     collection_types<unsigned long long int>::buffer edge_bids_buf;
     collection_types<unsigned long long int>::buffer hit_bids_buf;
@@ -147,29 +148,42 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     unsigned int nThreads = 128;
     unsigned int nBlocks = 1 + (ctx.nSp - 1) / nThreads;
 
-    ctx.layerCounts_buf = collection_types<int>::buffer(m_config.nLayers + 1, m_mr.main);
+    ctx.layerCounts_buf =
+        collection_types<int>::buffer(m_config.nLayers + 1, m_mr.main);
     m_copy.get().memset(ctx.layerCounts_buf, 0)->ignore();
 
     ctx.reducedSP_buf = collection_types<float4>::buffer(ctx.nSp, m_mr.main);
     m_copy.get().setup(ctx.reducedSP_buf)->ignore();
 
-    ctx.spacepointsLayer_buf = collection_types<short>::buffer(ctx.nSp, m_mr.main);
+    ctx.spacepointsLayer_buf =
+        collection_types<short>::buffer(ctx.nSp, m_mr.main);
     m_copy.get().setup(ctx.spacepointsLayer_buf)->ignore();
 
-    ctx.volumeToLayerMap_buf = collection_types<short>::buffer(static_cast<uint>(m_config.volumeToLayerMap.size()), m_mr.main);
+    ctx.volumeToLayerMap_buf = collection_types<short>::buffer(
+        static_cast<uint>(m_config.volumeToLayerMap.size()), m_mr.main);
     m_copy.get().setup(ctx.volumeToLayerMap_buf)->ignore();
-    m_copy.get()(vecmem::get_data(m_config.volumeToLayerMap), ctx.volumeToLayerMap_buf)->ignore();
+    m_copy
+        .get()(vecmem::get_data(m_config.volumeToLayerMap),
+               ctx.volumeToLayerMap_buf)
+        ->ignore();
 
     if (m_config.surfaceToLayerMap.size() != 0) {
-        ctx.surfaceToLayerMap_buf = collection_types<std::pair<unsigned int, unsigned int>>::buffer(static_cast<uint>(m_config.surfaceToLayerMap.size()), m_mr.main);
+        ctx.surfaceToLayerMap_buf =
+            collection_types<std::pair<unsigned int, unsigned int>>::buffer(
+                static_cast<uint>(m_config.surfaceToLayerMap.size()),
+                m_mr.main);
         m_copy.get().setup(ctx.surfaceToLayerMap_buf)->ignore();
-        m_copy.get()(vecmem::get_data(m_config.surfaceToLayerMap), ctx.surfaceToLayerMap_buf)->ignore();
+        m_copy
+            .get()(vecmem::get_data(m_config.surfaceToLayerMap),
+                   ctx.surfaceToLayerMap_buf)
+            ->ignore();
     }  // may be zero and correct, volumeMapSize, nLayers are checked at config
 
-    ctx.layerType_buf = collection_types<char>::buffer(m_config.nLayers, m_mr.main);
+    ctx.layerType_buf =
+        collection_types<char>::buffer(m_config.nLayers, m_mr.main);
     m_copy.get().setup(ctx.layerType_buf)->ignore();
-    m_copy.get()(vecmem::get_data(m_config.layerInfo.type), ctx.layerType_buf)->ignore();
-
+    m_copy.get()(vecmem::get_data(m_config.layerInfo.type), ctx.layerType_buf)
+        ->ignore();
 
     kernels::count_sp_by_layer<<<nBlocks, nThreads, 0, stream>>>(
         spacepoints, measurements, ctx.volumeToLayerMap_buf,
@@ -183,20 +197,23 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     // prefix sum layerCounts
     collection_types<int>::host layerCounts(m_config.nLayers + 1, m_mr.host);
     m_copy.get()(vecmem::get_data(ctx.layerCounts_buf), layerCounts)->wait();
-    
-    //std::inclusive_scan(layerCounts.begin(), layerCounts.end(), layerCounts.begin()); // Mabye use a GPU version of a scan?
+
+    // std::inclusive_scan(layerCounts.begin(), layerCounts.end(),
+    // layerCounts.begin()); // Mabye use a GPU version of a scan?
     for (size_t layer = 0; layer < m_config.nLayers; layer++) {
         layerCounts[layer + 1] += layerCounts[layer];
     }
-    m_copy.get()(vecmem::get_data(layerCounts),
-                 ctx.layerCounts_buf)->wait();
+    m_copy.get()(vecmem::get_data(layerCounts), ctx.layerCounts_buf)->wait();
 
-    ctx.nNodes = static_cast<unsigned int>(layerCounts[m_config.nLayers]); // The number of spacepoints in the configured layers
-    //ctx.nNodes = ctx.nSp; // TODO: This is a temporary fix to avoid the issue with the layerCounts buffer
+    ctx.nNodes = static_cast<unsigned int>(
+        layerCounts[m_config.nLayers]);  // The number of spacepoints in the
+                                         // configured layers
+    // ctx.nNodes = ctx.nSp; // TODO: This is a temporary fix to avoid the issue
+    // with the layerCounts buffer
     TRACCC_DEBUG("nNodes " << ctx.nNodes);
     if (ctx.nNodes == 0)
         return {0, m_mr.main};
-    //layerCounts.reset();
+    // layerCounts.reset();
 
     ctx.sp_params_buf = collection_types<float4>::buffer(ctx.nSp, m_mr.main);
     m_copy.get().setup(ctx.sp_params_buf)->ignore();
@@ -212,15 +229,20 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     // 1. histogram spacepoints by layer->eta->phi and convert to nodes
     // do this in config setup?
-    ctx.layer_info_buf = collection_types<std::pair<int, int>>::buffer(m_config.nLayers, m_mr.main);
+    ctx.layer_info_buf = collection_types<std::pair<int, int>>::buffer(
+        m_config.nLayers, m_mr.main);
     m_copy.get().setup(ctx.layer_info_buf)->ignore();
-    m_copy.get()(vecmem::get_data(m_config.layerInfo.info), ctx.layer_info_buf)->ignore();
+    m_copy.get()(vecmem::get_data(m_config.layerInfo.info), ctx.layer_info_buf)
+        ->ignore();
 
-    ctx.layer_geo_buf = collection_types<std::pair<float, float>>::buffer(m_config.nLayers, m_mr.main);
+    ctx.layer_geo_buf = collection_types<std::pair<float, float>>::buffer(
+        m_config.nLayers, m_mr.main);
     m_copy.get().setup(ctx.layer_geo_buf)->ignore();
-    m_copy.get()(vecmem::get_data(m_config.layerInfo.geo), ctx.layer_geo_buf)->ignore();
+    m_copy.get()(vecmem::get_data(m_config.layerInfo.geo), ctx.layer_geo_buf)
+        ->ignore();
 
-    ctx.node_phi_index_buf = collection_types<int>::buffer(ctx.nNodes, m_mr.main);
+    ctx.node_phi_index_buf =
+        collection_types<int>::buffer(ctx.nNodes, m_mr.main);
     m_copy.get().setup(ctx.node_phi_index_buf)->ignore();
 
     nThreads = 256;
@@ -234,7 +256,8 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     cudaStreamSynchronize(stream);
 
-    ctx.node_eta_index_buf = collection_types<int>::buffer(ctx.nNodes, m_mr.main);
+    ctx.node_eta_index_buf =
+        collection_types<int>::buffer(ctx.nNodes, m_mr.main);
     m_copy.get().setup(ctx.node_eta_index_buf)->ignore();
 
     nBlocks = m_config.nLayers;
@@ -262,7 +285,8 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     cudaStreamSynchronize(stream);
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
-    ctx.eta_node_counter_buf = collection_types<int>::buffer(m_config.n_eta_bins, m_mr.main);
+    ctx.eta_node_counter_buf =
+        collection_types<int>::buffer(m_config.n_eta_bins, m_mr.main);
     m_copy.get().setup(ctx.eta_node_counter_buf)->ignore();
 
     unsigned int nBinsPerBlock = 128;
@@ -282,13 +306,15 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     collection_types<int>::host eta_sums(m_config.n_eta_bins, m_mr.host);
     m_copy.get()(vecmem::get_data(ctx.eta_node_counter_buf), eta_sums)->wait();
 
-    for (unsigned int k = 0; k < m_config.n_eta_bins; k++) { // TODO: Maybe use a GPU version of a scan? or std version?
+    for (unsigned int k = 0; k < m_config.n_eta_bins;
+         k++) {  // TODO: Maybe use a GPU version of a scan? or std version?
         eta_sums[k + 1] += eta_sums[k];
     }
     // send back
     m_copy.get()(vecmem::get_data(eta_sums), ctx.eta_node_counter_buf)->wait();
 
-    ctx.eta_bin_views = collection_types<int>::host(2 * m_config.n_eta_bins, m_mr.host);
+    ctx.eta_bin_views =
+        collection_types<int>::host(2 * m_config.n_eta_bins, m_mr.host);
 
     for (unsigned view_idx = 0; view_idx < m_config.n_eta_bins; view_idx++) {
         unsigned int pos = 2 * view_idx;
@@ -306,7 +332,8 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
-    ctx.node_params_buf = collection_types<float>::buffer(5 * ctx.nNodes, m_mr.main);
+    ctx.node_params_buf =
+        collection_types<float>::buffer(5 * ctx.nNodes, m_mr.main);
     m_copy.get().setup(ctx.node_params_buf)->ignore();
     ctx.node_index_buf = collection_types<int>::buffer(ctx.nNodes, m_mr.main);
     m_copy.get().setup(ctx.node_index_buf)->ignore();
@@ -324,14 +351,18 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     cudaStreamSynchronize(stream);
 
-
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
-    ctx.eta_bin_views_buf = collection_types<int>::buffer(2 * m_config.n_eta_bins, m_mr.main); // Here the type changed as a quick fix to avoid the issue with the eta_bin_views buffer
+    ctx.eta_bin_views_buf = collection_types<int>::buffer(
+        2 * m_config.n_eta_bins,
+        m_mr.main);  // Here the type changed as a quick fix to avoid the issue
+                     // with the eta_bin_views buffer
     m_copy.get().setup(ctx.eta_bin_views_buf)->ignore();
-    m_copy.get()(vecmem::get_data(ctx.eta_bin_views), ctx.eta_bin_views_buf)->wait();
+    m_copy.get()(vecmem::get_data(ctx.eta_bin_views), ctx.eta_bin_views_buf)
+        ->wait();
 
-    ctx.bin_rads_buf = collection_types<float>::buffer(2*m_config.n_eta_bins, m_mr.main);
+    ctx.bin_rads_buf =
+        collection_types<float>::buffer(2 * m_config.n_eta_bins, m_mr.main);
     m_copy.get().setup(ctx.bin_rads_buf)->ignore();
 
     cudaStreamSynchronize(stream);
@@ -343,13 +374,14 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     nBlocks = 1 + (m_config.n_eta_bins - 1) / nBinsPerBlock;
 
     kernels::minmax_rad_kernel<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.eta_bin_views_buf, ctx.node_params_buf, ctx.bin_rads_buf, nBinsPerBlock,
-        m_config.n_eta_bins);
+        ctx.eta_bin_views_buf, ctx.node_params_buf, ctx.bin_rads_buf,
+        nBinsPerBlock, m_config.n_eta_bins);
 
     cudaStreamSynchronize(stream);
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
-    ctx.bin_rads = collection_types<float>::host(2 * m_config.n_eta_bins, m_mr.host);
+    ctx.bin_rads =
+        collection_types<float>::host(2 * m_config.n_eta_bins, m_mr.host);
     m_copy.get()(vecmem::get_data(ctx.bin_rads_buf), ctx.bin_rads)->wait();
 
     cudaStreamSynchronize(stream);
@@ -435,8 +467,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
         ctx.bin_pair_views[offset] = currBegin_bin1;
         ctx.bin_pair_views[1 + offset] = currEnd_bin1;
-        ctx.bin_pair_views[2 + offset] =
-            ctx.eta_bin_views[2 * binPair.second];
+        ctx.bin_pair_views[2 + offset] = ctx.eta_bin_views[2 * binPair.second];
         ctx.bin_pair_views[3 + offset] =
             ctx.eta_bin_views[2 * binPair.second + 1];
         ctx.bin_pair_dphi[pairIdx] = deltaPhi;
@@ -446,16 +477,20 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     TRACCC_DEBUG("nUsedBinPairs " << ctx.nUsedBinPairs);
     if (ctx.nUsedBinPairs == 0)
         return {0, m_mr.main};
-    //ctx.eta_bin_views.reset();
-    // allocate memory and copy bin pair views and phi cuts to GPU
+    // ctx.eta_bin_views.reset();
+    //  allocate memory and copy bin pair views and phi cuts to GPU
 
-    ctx.bin_pair_views_buf = collection_types<int>::buffer(4*ctx.nUsedBinPairs, m_mr.main);
+    ctx.bin_pair_views_buf =
+        collection_types<int>::buffer(4 * ctx.nUsedBinPairs, m_mr.main);
     m_copy.get().setup(ctx.bin_pair_views_buf)->ignore();
-    m_copy.get()(vecmem::get_data(ctx.bin_pair_views), ctx.bin_pair_views_buf)->ignore();
+    m_copy.get()(vecmem::get_data(ctx.bin_pair_views), ctx.bin_pair_views_buf)
+        ->ignore();
 
-    ctx.bin_pair_dphi_buf = collection_types<float>::buffer(ctx.nUsedBinPairs, m_mr.main);
+    ctx.bin_pair_dphi_buf =
+        collection_types<float>::buffer(ctx.nUsedBinPairs, m_mr.main);
     m_copy.get().setup(ctx.bin_pair_dphi_buf)->ignore();
-    m_copy.get()(vecmem::get_data(ctx.bin_pair_dphi), ctx.bin_pair_dphi_buf)->ignore();
+    m_copy.get()(vecmem::get_data(ctx.bin_pair_dphi), ctx.bin_pair_dphi_buf)
+        ->ignore();
 
     ctx.counters_buf = collection_types<unsigned int>::buffer(12, m_mr.main);
     m_copy.get().setup(ctx.counters_buf)->ignore();
@@ -465,11 +500,14 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     // 2. Find edges between spacepoint pairs
     ctx.nMaxEdges = m_config.max_edges_factor * ctx.nNodes;
-    ctx.edge_params_buf = collection_types<kernels::half4>::buffer(ctx.nMaxEdges, m_mr.main);
+    ctx.edge_params_buf =
+        collection_types<kernels::half4>::buffer(ctx.nMaxEdges, m_mr.main);
     m_copy.get().setup(ctx.edge_params_buf)->ignore();
-    ctx.edge_nodes_buf = collection_types<int2>::buffer(ctx.nMaxEdges, m_mr.main);
+    ctx.edge_nodes_buf =
+        collection_types<int2>::buffer(ctx.nMaxEdges, m_mr.main);
     m_copy.get().setup(ctx.edge_nodes_buf)->ignore();
-    ctx.num_incoming_edges_buf = collection_types<int>::buffer(ctx.nNodes + 1, m_mr.main);
+    ctx.num_incoming_edges_buf =
+        collection_types<int>::buffer(ctx.nNodes + 1, m_mr.main);
     m_copy.get().setup(ctx.num_incoming_edges_buf)->ignore();
     m_copy.get().memset(ctx.num_incoming_edges_buf, 0)->ignore();
 
@@ -486,11 +524,9 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
-    
     collection_types<unsigned int>::host h_counters(12, m_mr.host);
     m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)->wait();
     ctx.nEdges = h_counters[0];
-    
 
     TRACCC_DEBUG("Created " << ctx.nEdges << " edges with a cap of "
                             << ctx.nMaxEdges);
@@ -509,14 +545,14 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     cudaStreamSynchronize(stream);
 
-    for (unsigned int k = 0; k < ctx.nNodes; k++){ // TODO: Maybe use a GPU version of a scan? or std version?
+    for (unsigned int k = 0; k < ctx.nNodes;
+         k++) {  // TODO: Maybe use a GPU version of a scan? or std version?
         cusum[k + 1] += cusum[k];
     }
 
     m_copy.get()(vecmem::get_data(cusum), ctx.num_incoming_edges_buf)->ignore();
 
     cudaStreamSynchronize(stream);
-
 
     // 3. link edges and nodes
 
@@ -534,10 +570,10 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
-
     // 4. edge matching to create edge-to-edge connections
 
-    ctx.num_neighbours_buf = collection_types<unsigned char>::buffer(ctx.nEdges, m_mr.main);
+    ctx.num_neighbours_buf =
+        collection_types<unsigned char>::buffer(ctx.nEdges, m_mr.main);
     m_copy.get().setup(ctx.num_neighbours_buf)->ignore();
     m_copy.get().memset(ctx.num_neighbours_buf, 0)->ignore();
 
@@ -545,7 +581,8 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     m_copy.get().setup(ctx.reIndexer_buf)->ignore();
     m_copy.get().memset(ctx.reIndexer_buf, 0xFF)->ignore();
 
-    ctx.neighbours_buf = collection_types<int>::buffer(m_config.max_num_neighbours * ctx.nEdges, m_mr.main);
+    ctx.neighbours_buf = collection_types<int>::buffer(
+        m_config.max_num_neighbours * ctx.nEdges, m_mr.main);
     m_copy.get().setup(ctx.neighbours_buf)->ignore();
     m_copy.get().memset(ctx.neighbours_buf, 0)->ignore();
 
@@ -586,7 +623,8 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     unsigned int nIntsPerEdge = 2 + 1 + m_config.max_num_neighbours;
 
-    ctx.output_graph_buf = collection_types<int>::buffer(ctx.nConnectedEdges * nIntsPerEdge, m_mr.main);
+    ctx.output_graph_buf = collection_types<int>::buffer(
+        ctx.nConnectedEdges * nIntsPerEdge, m_mr.main);
     m_copy.get().setup(ctx.output_graph_buf)->ignore();
 
     nThreads = 256;
@@ -596,8 +634,8 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     kernels::graphCompressionKernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.node_index_buf, ctx.edge_nodes_buf, ctx.num_neighbours_buf,
-        ctx.neighbours_buf, ctx.reIndexer_buf, ctx.output_graph_buf, nEdgesPerBlock,
-        ctx.nEdges, m_config.max_num_neighbours);
+        ctx.neighbours_buf, ctx.reIndexer_buf, ctx.output_graph_buf,
+        nEdgesPerBlock, ctx.nEdges, m_config.max_num_neighbours);
 
     cudaStreamSynchronize(stream);
 
@@ -605,20 +643,24 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     // 6. Find longest segments with CCA
 
-    ctx.active_edges_buf = collection_types<int>::buffer(ctx.nConnectedEdges, m_mr.main);
+    ctx.active_edges_buf =
+        collection_types<int>::buffer(ctx.nConnectedEdges, m_mr.main);
     m_copy.get().setup(ctx.active_edges_buf)->ignore();
     m_copy.get().memset(ctx.active_edges_buf, 0xFF)->ignore();
 
-    ctx.levels_buf = collection_types<char>::buffer(2 * ctx.nConnectedEdges, m_mr.main);
+    ctx.levels_buf =
+        collection_types<char>::buffer(2 * ctx.nConnectedEdges, m_mr.main);
     m_copy.get().setup(ctx.levels_buf)->ignore();
     m_copy.get().memset(ctx.levels_buf, 0x1)->ignore();
 
-    ctx.outgoing_paths_buf = collection_types<short2>::buffer(ctx.nConnectedEdges, m_mr.main);
+    ctx.outgoing_paths_buf =
+        collection_types<short2>::buffer(ctx.nConnectedEdges, m_mr.main);
     m_copy.get().setup(ctx.outgoing_paths_buf)->ignore();
 
     unsigned int nEdgesLeft = ctx.nConnectedEdges;
     h_counters[3] = nEdgesLeft;
-    m_copy.get()(vecmem::get_data(h_counters), ctx.counters_buf)->ignore(); // Only counters 3 is used to the device
+    m_copy.get()(vecmem::get_data(h_counters), ctx.counters_buf)
+        ->ignore();  // Only counters 3 is used to the device
     if (nEdgesLeft == 0)
         return {0, m_mr.main};
 
@@ -640,15 +682,13 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
-
     nThreads = 128;
     nBlocks = 1 + (ctx.nConnectedEdges - 1) / nThreads;
 
     cudaStreamSynchronize(stream);
 
     kernels::count_terminus_edges<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.outgoing_paths_buf, ctx.counters_buf,
-        ctx.nConnectedEdges);
+        ctx.outgoing_paths_buf, ctx.counters_buf, ctx.nConnectedEdges);
 
     cudaStreamSynchronize(stream);
 
@@ -663,31 +703,34 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     TRACCC_DEBUG(path_sizes[0] << "size of path store | nTerminusEdges "
                                << path_sizes[1]);
 
-    ctx.path_store_buf = collection_types<int2>::buffer(path_sizes[0] + path_sizes[1], m_mr.main);
+    ctx.path_store_buf = collection_types<int2>::buffer(
+        path_sizes[0] + path_sizes[1], m_mr.main);
     m_copy.get().setup(ctx.path_store_buf)->ignore();
-    ctx.seed_proposals_buf = collection_types<int2>::buffer(path_sizes[0], m_mr.main);
+    ctx.seed_proposals_buf =
+        collection_types<int2>::buffer(path_sizes[0], m_mr.main);
     m_copy.get().setup(ctx.seed_proposals_buf)->ignore();
-    ctx.seed_ambiguity_buf = collection_types<char>::buffer(path_sizes[0], m_mr.main);
+    ctx.seed_ambiguity_buf =
+        collection_types<char>::buffer(path_sizes[0], m_mr.main);
     m_copy.get().setup(ctx.seed_ambiguity_buf)->ignore();
 
-    ctx.edge_bids_buf = collection_types<unsigned long long int>::buffer(ctx.nConnectedEdges, m_mr.main);
+    ctx.edge_bids_buf = collection_types<unsigned long long int>::buffer(
+        ctx.nConnectedEdges, m_mr.main);
     m_copy.get().setup(ctx.edge_bids_buf)->ignore();
     m_copy.get().memset(ctx.edge_bids_buf, 0)->ignore();
 
     nThreads = 128;
     kernels::add_terminus_to_path_store<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.path_store_buf, ctx.outgoing_paths_buf,
-        ctx.nConnectedEdges);
+        ctx.path_store_buf, ctx.outgoing_paths_buf, ctx.nConnectedEdges);
 
     unsigned int terminusPerBlock = std::min(
         nThreads, 1 + (traccc::device::gbts_consts::live_path_buffer - 1) /
                           pathsPerTerminus);
     nBlocks = 1 + (path_sizes[1] - 1) / terminusPerBlock;
-    
+
     kernels::fill_path_store<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.path_store_buf, ctx.output_graph_buf, ctx.levels_buf, ctx.counters_buf,
-        path_sizes[1], terminusPerBlock, m_config.max_num_neighbours,
-        path_sizes[0] + path_sizes[1]);
+        ctx.path_store_buf, ctx.output_graph_buf, ctx.levels_buf,
+        ctx.counters_buf, path_sizes[1], terminusPerBlock,
+        m_config.max_num_neighbours, path_sizes[0] + path_sizes[1]);
 
     nThreads = 128;
     nBlocks = 1 + (path_sizes[0] + path_sizes[1] - 1) / nThreads;
@@ -698,7 +741,8 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         ctx.counters_buf, path_sizes[1], m_config.minLevel,
         m_config.max_num_neighbours, m_config.seed_extraction_params);
 
-    m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)->wait(); // Only counters 8 is used
+    m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)
+        ->wait();  // Only counters 8 is used
     unsigned int nProps = h_counters[8];
 
     TRACCC_DEBUG("nProps " << nProps);
@@ -728,14 +772,14 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
             ctx.path_store_buf, ctx.seed_proposals_buf, ctx.edge_bids_buf,
             ctx.seed_ambiguity_buf, ctx.counters_buf, round);
     }
-    
-    m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)->ignore(); // Only counters 9 is used
+
+    m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)
+        ->ignore();  // Only counters 9 is used
     unsigned int nRejectedProps = h_counters[9];
     ctx.nSeeds = nProps - nRejectedProps;
 
     TRACCC_DEBUG("Rejected " << nRejectedProps << " out of " << nProps
                              << " seed proposals");
-
 
     // 8. convert to 3sp seeds and make output buffer
     // allocate extra seed space for hit permutation
@@ -743,7 +787,8 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         2 * ctx.nSeeds, m_mr.main, vecmem::data::buffer_type::resizable);
     m_copy.get().setup(output_seeds)->wait();
 
-    ctx.hit_bids_buf = collection_types<unsigned long long int>::buffer(ctx.nSp, m_mr.main);
+    ctx.hit_bids_buf =
+        collection_types<unsigned long long int>::buffer(ctx.nSp, m_mr.main);
     m_copy.get().setup(ctx.hit_bids_buf)->ignore();
     m_copy.get().memset(ctx.hit_bids_buf, 0)->wait();
 

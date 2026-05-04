@@ -7,10 +7,8 @@
 
 #pragma once
 
-
 // Local include(s).
 #include "traccc/definitions/qualifiers.hpp"
-
 
 namespace traccc {
 
@@ -42,25 +40,33 @@ inline TRACCC_HOST_DEVICE traccc::int2 make_int2(const int x, const int y) {
     return traccc::int2{x, y};
 }
 
-inline TRACCC_HOST_DEVICE traccc::float4 make_float4(const float x, const float y, const float z, const float w) {
+inline TRACCC_HOST_DEVICE traccc::float4 make_float4(const float x,
+                                                     const float y,
+                                                     const float z,
+                                                     const float w) {
     return traccc::float4{x, y, z, w};
 }
 
-inline TRACCC_HOST_DEVICE traccc::float2 make_float2(const float x, const float y) {
+inline TRACCC_HOST_DEVICE traccc::float2 make_float2(const float x,
+                                                     const float y) {
     return traccc::float2{x, y};
 }
 
-inline TRACCC_HOST_DEVICE traccc::uint2 make_uint2(const unsigned int x, const unsigned int y) {
+inline TRACCC_HOST_DEVICE traccc::uint2 make_uint2(const unsigned int x,
+                                                   const unsigned int y) {
     return traccc::uint2{x, y};
 }
 
-
-inline TRACCC_HOST_DEVICE traccc::uint4 make_uint4(const unsigned int x, const unsigned int y, const unsigned int z, const unsigned int w) {
+inline TRACCC_HOST_DEVICE traccc::uint4 make_uint4(const unsigned int x,
+                                                   const unsigned int y,
+                                                   const unsigned int z,
+                                                   const unsigned int w) {
     return traccc::uint4{x, y, z, w};
 }
 
-inline TRACCC_HOST_DEVICE traccc::short2 make_short2(const short x, const short y) {
+inline TRACCC_HOST_DEVICE traccc::short2 make_short2(const short x,
+                                                     const short y) {
     return traccc::short2{x, y};
 }
 
-} // namespace traccc
+}  // namespace traccc

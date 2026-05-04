@@ -76,7 +76,8 @@ bool gbts_seedfinder_config::setLinkingScheme(
                       static_cast<short>(
                           surfaceToLayerMap.size() +
                           1);  // start of this volume's surfaces in the map + 1
-                for (std::pair<unsigned int, unsigned int> pair : surfacesInVolume)
+                for (std::pair<unsigned int, unsigned int> pair :
+                     surfacesInVolume)
                     surfaceToLayerMap.push_back(pair);
             }
             volumeToLayerMap_unordered.push_back(std::make_pair(
@@ -92,9 +93,9 @@ bool gbts_seedfinder_config::setLinkingScheme(
         layerChange |= (current_layer != geoIDLayerPair.second);
 
         // save surfaces incase volume is not encommpassed by a layer
-        surfacesInVolume.push_back(std::make_pair(
-            static_cast<unsigned int>(geo_id.index()),
-            static_cast<unsigned int>(geoIDLayerPair.second)));
+        surfacesInVolume.push_back(
+            std::make_pair(static_cast<unsigned int>(geo_id.index()),
+                           static_cast<unsigned int>(geoIDLayerPair.second)));
     }
     // make volume by layer map
     volumeToLayerMap.resize(largest_volume_index + 1);
