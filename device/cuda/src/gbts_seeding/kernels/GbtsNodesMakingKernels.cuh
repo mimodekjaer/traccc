@@ -21,6 +21,8 @@
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
 #include "traccc/gbts_seeding/gbts_types.hpp"
 
+// Local include(s).
+#include "traccc/device/global_index.hpp"
 // VecMem include(s).
 #include <vecmem/containers/data/vector_view.hpp>
 #include <vecmem/containers/device_vector.hpp>
@@ -80,8 +82,10 @@ __global__ void count_sp_by_layer(
     collection_types<short>::device spacepointsLayer(spacepointsLayer_view);
     collection_types<float4>::device reducedSP(reducedSP_view);
 
-    for (int spIdx = threadIdx.x + blockDim.x * blockIdx.x; spIdx < nSp;
-         spIdx += blockDim.x * gridDim.x) {
+    const unsigned int spIdx = threadIdx.x + blockDim.x * blockIdx.x;
+    if (spIdx >= nSp) {
+        return;
+    }
         // get the layer of the spacepoint
         const traccc::edm::spacepoint_collection::const_device::const_proxy_type
             spacepoint = spacepoints.at(spIdx);
@@ -93,12 +97,12 @@ __global__ void count_sp_by_layer(
         // some volume_ids map one to one with layer others need searching
         if (geo_id.volume() > volumeMapSize) {
             reducedSP[spIdx].w = -CHAR_MAX - 1;
-            continue;  // unconfigured volume
+            return;  // unconfigured volume
         }
         short begin_or_bin = volumeToLayerMap[geo_id.volume()];
         if (begin_or_bin == SHRT_MAX) {
             reducedSP[spIdx].w = -CHAR_MAX - 1;
-            continue;  // unconfigured volume
+            return;  // unconfigured volume
         }
         unsigned int layerIdx;
         if (begin_or_bin < 0) {
@@ -124,7 +128,7 @@ __global__ void count_sp_by_layer(
             //-ve cluster_diameter to skip cot(theta) prediction
             // large -ve to skip spacepoint entirely
             reducedSP[spIdx].w = -CHAR_MAX - 1;
-            continue;
+            return;
         }
         cluster_diameter =
             (doTauCut && type != 0) ? -1 * type : cluster_diameter;
@@ -135,7 +139,6 @@ __global__ void count_sp_by_layer(
         const std::array<float, 3u> pos = spacepoint.global();
         reducedSP[spIdx] =
             make_float4(pos[0], pos[1], pos[2], cluster_diameter);
-    }
 }
 
 // layerCounts is prefix sumed on CPU inbetween count_sp_by_layer and this
@@ -157,55 +160,51 @@ __global__ void bin_sp_by_layer(
     collection_types<float4>::device sp_params(sp_params_view);
     collection_types<int>::device original_sp_idx(original_sp_idx_view);
 
-    for (int spIdx = threadIdx.x + blockDim.x * blockIdx.x; spIdx < nSp;
-         spIdx += blockDim.x * gridDim.x) {
+    const unsigned int spIdx = threadIdx.x + blockDim.x * blockIdx.x;
+    if (spIdx >= nSp) {
+        return;
+    }
 
-        float4 sp = reducedSP[spIdx];
+    const float4 sp = reducedSP[spIdx];
         if (sp.w < -CHAR_MAX) {
-            continue;
+            return;
         }
-        short layerIdx = spacepointsLayer[spIdx];
-        unsigned int binedIdx =
+        const short layerIdx = spacepointsLayer[spIdx];
+        const unsigned int binedIdx =
             vecmem::device_atomic_ref<int>(layerCounts[layerIdx])
-                .fetch_add(-1) -
-            1;
+                .fetch_add(-1) - 1;
         original_sp_idx[binedIdx] = spIdx;
         sp_params[binedIdx] = sp;
-    }
+
 }
 
 __global__ void node_phi_binning_kernel(
     const collection_types<float4>::const_view d_sp_params_view,
     const collection_types<int>::view d_node_phi_index_view,
-    const unsigned int nNodesPerBlock, const unsigned int nNodes,
+    const unsigned int nNodes,
     const unsigned int nPhiBins) {
 
     const collection_types<float4>::const_device d_sp_params(d_sp_params_view);
     collection_types<int>::device d_node_phi_index(d_node_phi_index_view);
-    int begin_node = blockIdx.x * nNodesPerBlock;
-
     float inv_phiSliceWidth = 1 / (2.0f * CUDART_PI_F / nPhiBins);
 
-    for (int idx = threadIdx.x + begin_node; idx < begin_node + nNodesPerBlock;
-         idx += blockDim.x) {
-
-        if (idx >= nNodes) {
-            continue;
-        }
-        float4 sp = d_sp_params[idx];
-
-        float Phi = atan2f(sp.y, sp.x);
-
-        int phiIdx = (Phi + CUDART_PI_F) * inv_phiSliceWidth;
-
-        if (phiIdx >= nPhiBins) {
-            phiIdx %= nPhiBins;
-        } else if (phiIdx < 0) {
-            phiIdx += nPhiBins;
-            phiIdx %= nPhiBins;
-        }
-        d_node_phi_index[idx] = phiIdx;
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= nNodes) {
+        return;
     }
+    float4 sp = d_sp_params[idx];
+
+    float Phi = atan2f(sp.y, sp.x);
+
+    int phiIdx = (Phi + CUDART_PI_F) * inv_phiSliceWidth;
+
+    if (phiIdx >= nPhiBins) {
+        phiIdx %= nPhiBins;
+    } else if (phiIdx < 0) {
+        phiIdx += nPhiBins;
+        phiIdx %= nPhiBins;
+    }
+    d_node_phi_index[idx] = phiIdx;
 }
 
 __global__ void node_eta_binning_kernel(
@@ -280,47 +279,60 @@ __global__ void node_eta_binning_kernel(
 }
 // TO-DO fuse kernels?
 __global__ void eta_phi_histo_kernel(
-    const collection_types<int>::const_view d_node_phi_index_view,
+    const collection_types<int>::view d_node_phi_index_view,
     const collection_types<int>::const_view d_node_eta_index_view,
     const collection_types<int>::view d_eta_phi_histo_view,
-    const unsigned int nNodesPerBlock, const unsigned int nNodes,
+    const collection_types<float4>::const_view d_sp_params_view,
+    const unsigned int nNodes,
     const unsigned int nPhiBins) {
 
-    const collection_types<int>::const_device d_node_phi_index(
+    collection_types<int>::device d_node_phi_index(
         d_node_phi_index_view);
     const collection_types<int>::const_device d_node_eta_index(
         d_node_eta_index_view);
     collection_types<int>::device d_eta_phi_histo(d_eta_phi_histo_view);
 
-    int begin_node = blockIdx.x * nNodesPerBlock;
+    const collection_types<float4>::const_device d_sp_params(d_sp_params_view);
+    const float inv_phiSliceWidth = 1 / (2.0f * CUDART_PI_F / nPhiBins);
 
-    for (int idx = threadIdx.x + begin_node; idx < begin_node + nNodesPerBlock;
-         idx += blockDim.x) {
-
-        if (idx >= nNodes) {
-            continue;
-        }
-        int eta_index = d_node_eta_index[idx];
-
-        int histo_bin = d_node_phi_index[idx] + nPhiBins * eta_index;
-        vecmem::device_atomic_ref<int>(d_eta_phi_histo[histo_bin]).fetch_add(1);
+    const int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= nNodes) {
+        return;
     }
+    const float4 sp = d_sp_params[idx];
+
+    const float Phi = atan2f(sp.y, sp.x);
+
+     int phiIdx = (Phi + CUDART_PI_F) * inv_phiSliceWidth;
+
+    if (phiIdx >= nPhiBins) {
+        phiIdx %= nPhiBins;
+    } else if (phiIdx < 0) {
+        phiIdx += nPhiBins;
+        phiIdx %= nPhiBins;
+    }
+    d_node_phi_index[idx] = phiIdx;
+
+
+    const int eta_index = d_node_eta_index[idx];
+
+    const int histo_bin = d_node_phi_index[idx] + nPhiBins * eta_index;
+    vecmem::device_atomic_ref<int> d_eta_phi_histo_ref(d_eta_phi_histo[histo_bin]);
+    d_eta_phi_histo_ref.fetch_add(1);
 }
 
 __global__ void eta_phi_counting_kernel(
     const collection_types<int>::const_view d_histo_view,
     const collection_types<int>::view d_eta_node_counter_view,
     const collection_types<int>::view d_phi_cusums_view,
-    const unsigned int nBinsPerBlock, const unsigned int maxEtaBin,
+    const unsigned int maxEtaBin,
     const unsigned int nPhiBins) {
 
     const collection_types<int>::const_device d_histo(d_histo_view);
     collection_types<int>::device d_eta_node_counter(d_eta_node_counter_view);
     collection_types<int>::device d_phi_cusums(d_phi_cusums_view);
 
-    int eta_bin_start = nBinsPerBlock * blockIdx.x;
-
-    int eta_bin_idx = eta_bin_start + threadIdx.x;
+    int eta_bin_idx = blockDim.x * blockIdx.x + threadIdx.x;
 
     if (eta_bin_idx >= maxEtaBin) {
         return;
@@ -341,16 +353,14 @@ __global__ void eta_phi_counting_kernel(
 __global__ void eta_phi_prefix_sum_kernel(
     const collection_types<int>::const_view d_eta_node_counter_view,
     const collection_types<int>::view d_phi_cusums_view,
-    const unsigned int nBinsPerBlock, const unsigned int maxEtaBin,
+    const unsigned int maxEtaBin,
     const unsigned int nPhiBins) {
 
     const collection_types<int>::const_device d_eta_node_counter(
         d_eta_node_counter_view);
     collection_types<int>::device d_phi_cusums(d_phi_cusums_view);
 
-    int eta_bin_start = nBinsPerBlock * blockIdx.x;
-
-    int eta_bin_idx = eta_bin_start + threadIdx.x;
+    int eta_bin_idx = blockDim.x * blockIdx.x + threadIdx.x;
 
     if (eta_bin_idx >= maxEtaBin) {
         return;
@@ -375,7 +385,7 @@ __global__ void node_sorting_kernel(
     const collection_types<float>::view d_node_params_view,
     const collection_types<int>::view d_node_index_view,
     const collection_types<int>::const_view d_original_sp_idx_view,
-    const gbts_graph_building_params ap, const unsigned int nNodesPerBlock,
+    const gbts_graph_building_params ap,
     const unsigned int nNodes, const unsigned int nPhiBins) {
 
     const collection_types<float4>::const_device d_sp_params(d_sp_params_view);
@@ -389,47 +399,44 @@ __global__ void node_sorting_kernel(
     const collection_types<int>::const_device d_original_sp_idx(
         d_original_sp_idx_view);
 
-    int begin_node = blockIdx.x * nNodesPerBlock;
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
 
-    for (int idx = threadIdx.x + begin_node; idx < begin_node + nNodesPerBlock;
-         idx += blockDim.x) {
-
-        if (idx >= nNodes)
-            continue;
-
-        float4 sp = d_sp_params[idx];
-
-        float Phi = atan2f(sp.y, sp.x);
-        float r = sqrtf(sp.x * sp.x + sp.y * sp.y);
-        float z = sp.z;
-
-        float min_tau = -100.0;
-        float max_tau = 100.0;
-
-        if (sp.w > 0) {  // type 0 only
-            // linear fit
-            min_tau = ap.tMin_slope * (sp.w - ap.offset);
-            // linear fit + correction for short clusters
-            max_tau = ap.tMax_min + ap.tMax_correction / (sp.w + ap.offset) +
-                      ap.tMax_slope * (sp.w - ap.offset);
-        }
-
-        int eta_index = d_node_eta_index[idx];
-        int histo_bin = d_node_phi_index[idx] + nPhiBins * eta_index;
-
-        int pos = vecmem::device_atomic_ref<int>(d_phi_cusums[histo_bin])
-                      .fetch_add(1);
-
-        int o = 5 * pos;
-
-        d_node_params[o] = min_tau;
-        d_node_params[o + 1] = max_tau;
-        d_node_params[o + 2] = Phi;
-        d_node_params[o + 3] = r;
-        d_node_params[o + 4] = z;
-        // keep the original index of the input spacepoint
-        d_node_index[pos] = d_original_sp_idx[idx];
+    if (idx >= nNodes) {
+        return;
     }
+
+    float4 sp = d_sp_params[idx];
+
+    float Phi = atan2f(sp.y, sp.x);
+    float r = sqrtf(sp.x * sp.x + sp.y * sp.y);
+    float z = sp.z;
+
+    float min_tau = -100.0;
+    float max_tau = 100.0;
+
+    if (sp.w > 0) {  // type 0 only
+        // linear fit
+        min_tau = ap.tMin_slope * (sp.w - ap.offset);
+        // linear fit + correction for short clusters
+        max_tau = ap.tMax_min + ap.tMax_correction / (sp.w + ap.offset) +
+                    ap.tMax_slope * (sp.w - ap.offset);
+    }
+
+    int eta_index = d_node_eta_index[idx];
+    int histo_bin = d_node_phi_index[idx] + nPhiBins * eta_index;
+
+    int pos = vecmem::device_atomic_ref<int>(d_phi_cusums[histo_bin])
+                    .fetch_add(1);
+
+    int o = 5 * pos;
+
+    d_node_params[o] = min_tau;
+    d_node_params[o + 1] = max_tau;
+    d_node_params[o + 2] = Phi;
+    d_node_params[o + 3] = r;
+    d_node_params[o + 4] = z;
+    // keep the original index of the input spacepoint
+    d_node_index[pos] = d_original_sp_idx[idx];
 }
 
 __global__ void minmax_rad_kernel(
@@ -440,7 +447,7 @@ __global__ void minmax_rad_kernel(
     const collection_types<float>::view
         d_bin_rads_view,  // Here the type changed as a quick fix to avoid the
                           // issue with the bin_rads buffer
-    const unsigned int nBinsPerBlock, const unsigned int maxEtaBin) {
+    const unsigned int maxEtaBin) {
 
     const collection_types<int>::const_device d_eta_bin_views(
         d_eta_bin_views_view);  // Here the type changed as a quick fix to avoid
@@ -451,9 +458,7 @@ __global__ void minmax_rad_kernel(
         d_bin_rads_view);  // Here the type changed as a quick fix to avoid the
                            // issue with the bin_rads buffer
 
-    int eta_bin_start = nBinsPerBlock * blockIdx.x;
-
-    int eta_bin_idx = eta_bin_start + threadIdx.x;
+    int eta_bin_idx = blockDim.x * blockIdx.x + threadIdx.x;
 
     if (eta_bin_idx >= maxEtaBin) {
         return;

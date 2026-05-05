@@ -84,60 +84,42 @@ __global__ static void graphEdgeMakingKernel(
     collection_types<int>::device d_num_outgoing_edges(
         d_num_outgoing_edges_view);
 
-    __shared__ unsigned int begin_bin1;
-    __shared__ unsigned int begin_bin2;
-    __shared__ unsigned int num_nodes1;
-    __shared__ unsigned int num_nodes2;
-    __shared__ float deltaPhi;
-
-    __shared__ float minDeltaRad;
-    __shared__ float min_z0;
-    __shared__ float max_z0;
-    __shared__ float maxOuterRad;
-    __shared__ float min_zU;
-    __shared__ float max_zU;
-    __shared__ float max_kappa;
-    __shared__ float low_Kappa_d0;
-    __shared__ float high_Kappa_d0;
-
     __shared__ float tau_min[traccc::device::gbts_consts::node_buffer_length];
     __shared__ float tau_max[traccc::device::gbts_consts::node_buffer_length];
     __shared__ float phi[traccc::device::gbts_consts::node_buffer_length];
     __shared__ float r[traccc::device::gbts_consts::node_buffer_length];
     __shared__ float z[traccc::device::gbts_consts::node_buffer_length];
 
-    if (threadIdx.x == 0) {
-        deltaPhi = d_bin_pair_dphi[blockIdx.x];
+    
+    float deltaPhi = d_bin_pair_dphi[blockIdx.x];
 
-        begin_bin1 =
-            d_bin_pair_views[4 * blockIdx.x];  // Here the type changed as a
-                                               // quick fix to avoid the issue
-                                               // with the bin_pair_views buffer
-        begin_bin2 = d_bin_pair_views[4 * blockIdx.x +
-                                      2];  // Here the type changed as a quick
-                                           // fix to avoid the issue with the
-                                           // bin_pair_views buffer
-        num_nodes1 =
-            d_bin_pair_views[4 * blockIdx.x + 1] -
-            begin_bin1;  // Here the type changed as a quick fix to avoid the
-                         // issue with the bin_pair_views buffer
-        num_nodes2 =
-            d_bin_pair_views[4 * blockIdx.x + 3] -
-            begin_bin2;  // Here the type changed as a quick fix to avoid the
-                         // issue with the bin_pair_views buffer
+    unsigned int begin_bin1 =
+        d_bin_pair_views[4 * blockIdx.x];  // Here the type changed as a
+                                            // quick fix to avoid the issue
+                                            // with the bin_pair_views buffer
+    unsigned int begin_bin2 = d_bin_pair_views[4 * blockIdx.x +
+                                    2];  // Here the type changed as a quick
+                                        // fix to avoid the issue with the
+                                        // bin_pair_views buffer
+    unsigned int num_nodes1 =
+        d_bin_pair_views[4 * blockIdx.x + 1] -
+        begin_bin1;  // Here the type changed as a quick fix to avoid the
+                        // issue with the bin_pair_views buffer
+    unsigned int num_nodes2 =
+        d_bin_pair_views[4 * blockIdx.x + 3] -
+        begin_bin2;  // Here the type changed as a quick fix to avoid the
+                        // issue with the bin_pair_views buffer
 
-        minDeltaRad = d_graph_building_params.minDeltaRadius;
-        min_z0 = d_graph_building_params.min_z0;
-        max_z0 = d_graph_building_params.max_z0;
-        maxOuterRad = d_graph_building_params.maxOuterRadius;
-        min_zU = d_graph_building_params.cut_zMinU;
-        max_zU = d_graph_building_params.cut_zMaxU;
-        max_kappa = d_graph_building_params.max_Kappa;
-        low_Kappa_d0 = d_graph_building_params.low_Kappa_d0;
-        high_Kappa_d0 = d_graph_building_params.high_Kappa_d0;
-    }
-
-    barrier().blockBarrier();
+    float minDeltaRad = d_graph_building_params.minDeltaRadius;
+    float min_z0 = d_graph_building_params.min_z0;
+    float max_z0 = d_graph_building_params.max_z0;
+    float maxOuterRad = d_graph_building_params.maxOuterRadius;
+    float min_zU = d_graph_building_params.cut_zMinU;
+    float max_zU = d_graph_building_params.cut_zMaxU;
+    float max_kappa = d_graph_building_params.max_Kappa;
+    float low_Kappa_d0 = d_graph_building_params.low_Kappa_d0;
+    float high_Kappa_d0 = d_graph_building_params.high_Kappa_d0;
+    
     for (int idx = threadIdx.x; idx < num_nodes1; idx += blockDim.x) {
         // loading a chunk of nodes1 into shared mem buffers
         int offset = 5 * (idx + begin_bin1);
@@ -463,7 +445,7 @@ __global__ static void graphCompressionKernel(
     const collection_types<int>::const_view d_neighbours_view,
     const collection_types<int>::const_view d_reIndexer_view,
     const collection_types<int>::view d_output_graph_view,
-    const unsigned int nEdgesPerBlock, const unsigned int nEdges,
+    const unsigned int nEdges,
     const unsigned int nMaxNei) {
 
     const collection_types<int>::const_device d_orig_node_index(
@@ -475,18 +457,15 @@ __global__ static void graphCompressionKernel(
     const collection_types<int>::const_device d_reIndexer(d_reIndexer_view);
     collection_types<int>::device d_output_graph(d_output_graph_view);
 
-    int begin_edge = blockIdx.x * nEdgesPerBlock;
     int edge_size = 2 + 1 + nMaxNei;
 
-    for (int idx = threadIdx.x + begin_edge; idx < begin_edge + nEdgesPerBlock;
-         idx += blockDim.x) {
-
-        if (idx >= nEdges) {
-            continue;
-        }
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= nEdges) {
+        return;
+    }
         int newIdx = d_reIndexer[idx];
         if (newIdx == -1) {
-            continue;
+            return;
         }
         int pos = edge_size * newIdx;
         int2 edge_nodes = d_edge_nodes[idx];
@@ -502,7 +481,6 @@ __global__ static void graphCompressionKernel(
             d_output_graph[pos + traccc::device::gbts_consts::nei_start + k] =
                 d_reIndexer[d_neighbours[nei_pos + k]];
         }
-    }
 }
 
 }  // namespace traccc::cuda::kernels

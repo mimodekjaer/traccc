@@ -192,7 +192,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         m_config.graph_building_params.type1_max_width, ctx.nSp,
         m_config.volumeToLayerMap.size(), m_config.surfaceToLayerMap.size());
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     // prefix sum layerCounts
     collection_types<int>::host layerCounts(m_config.nLayers + 1, m_mr.host);
@@ -224,7 +224,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         ctx.sp_params_buf, ctx.reducedSP_buf, ctx.layerCounts_buf,
         ctx.spacepointsLayer_buf, ctx.original_sp_idx_buf, ctx.nSp);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
     // 1. histogram spacepoints by layer->eta->phi and convert to nodes
@@ -245,16 +245,15 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         collection_types<int>::buffer(ctx.nNodes, m_mr.main);
     m_copy.get().setup(ctx.node_phi_index_buf)->ignore();
 
-    nThreads = 256;
-    unsigned int nNodesPerBlock = nThreads * 64;
+    nThreads = 128;
 
-    nBlocks = 1 + (ctx.nNodes - 1) / nNodesPerBlock;
+    nBlocks = 1 + (ctx.nNodes - 1) / nThreads;
 
-    kernels::node_phi_binning_kernel<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.sp_params_buf, ctx.node_phi_index_buf, nNodesPerBlock, ctx.nNodes,
-        m_config.n_phi_bins);
-
-    cudaStreamSynchronize(stream);
+    //kernels::node_phi_binning_kernel<<<nBlocks, nThreads, 0, stream>>>(
+    //    ctx.sp_params_buf, ctx.node_phi_index_buf, ctx.nNodes,
+    //    m_config.n_phi_bins);
+    //
+    //m_stream.get().synchronize();
 
     ctx.node_eta_index_buf =
         collection_types<int>::buffer(ctx.nNodes, m_mr.main);
@@ -266,7 +265,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         ctx.sp_params_buf, ctx.layer_info_buf, ctx.layer_geo_buf,
         ctx.node_eta_index_buf, ctx.layerCounts_buf, m_config.nLayers);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
     unsigned int hist_size = m_config.n_eta_bins * m_config.n_phi_bins;
@@ -276,30 +275,29 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     ctx.phi_cusums_buf = collection_types<int>::buffer(hist_size, m_mr.main);
     m_copy.get().setup(ctx.phi_cusums_buf)->ignore();
 
-    nBlocks = 1 + (ctx.nNodes - 1) / nNodesPerBlock;
+    nBlocks = 1 + (ctx.nNodes - 1) / nThreads;
 
     kernels::eta_phi_histo_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.node_phi_index_buf, ctx.node_eta_index_buf, ctx.eta_phi_histo_buf,
-        nNodesPerBlock, ctx.nNodes, m_config.n_phi_bins);
+        ctx.sp_params_buf,
+        ctx.nNodes, m_config.n_phi_bins);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
     ctx.eta_node_counter_buf =
         collection_types<int>::buffer(m_config.n_eta_bins, m_mr.main);
     m_copy.get().setup(ctx.eta_node_counter_buf)->ignore();
 
-    unsigned int nBinsPerBlock = 128;
+    nThreads = 128;
 
-    nThreads = nBinsPerBlock;
-
-    nBlocks = 1 + (m_config.n_eta_bins - 1) / nBinsPerBlock;
+    nBlocks = 1 + (m_config.n_eta_bins - 1) / nThreads;
 
     kernels::eta_phi_counting_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.eta_phi_histo_buf, ctx.eta_node_counter_buf, ctx.phi_cusums_buf,
-        nBinsPerBlock, m_config.n_eta_bins, m_config.n_phi_bins);
+        m_config.n_eta_bins, m_config.n_phi_bins);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
@@ -322,13 +320,13 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         ctx.eta_bin_views[pos + 1] = eta_sums[view_idx];
     }
 
-    cudaStreamSynchronize(stream);
+    //m_stream.get().synchronize();
 
     kernels::eta_phi_prefix_sum_kernel<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.eta_node_counter_buf, ctx.phi_cusums_buf, nBinsPerBlock,
+        ctx.eta_node_counter_buf, ctx.phi_cusums_buf,
         m_config.n_eta_bins, m_config.n_phi_bins);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
@@ -339,17 +337,16 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     m_copy.get().setup(ctx.node_index_buf)->ignore();
 
     nThreads = 256;
-    nNodesPerBlock = nThreads * 64;
 
-    nBlocks = 1 + (ctx.nNodes - 1) / nNodesPerBlock;
+    nBlocks = 1 + (ctx.nNodes - 1) / nThreads;
 
     kernels::node_sorting_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.sp_params_buf, ctx.node_eta_index_buf, ctx.node_phi_index_buf,
         ctx.phi_cusums_buf, ctx.node_params_buf, ctx.node_index_buf,
-        ctx.original_sp_idx_buf, ctx.d_graph_building_params, nNodesPerBlock,
+        ctx.original_sp_idx_buf, ctx.d_graph_building_params,
         ctx.nNodes, m_config.n_phi_bins);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
@@ -365,26 +362,24 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         collection_types<float>::buffer(2 * m_config.n_eta_bins, m_mr.main);
     m_copy.get().setup(ctx.bin_rads_buf)->ignore();
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
-    nBinsPerBlock = 128;
+    nThreads = 128;
 
-    nThreads = nBinsPerBlock;
-
-    nBlocks = 1 + (m_config.n_eta_bins - 1) / nBinsPerBlock;
+    nBlocks = 1 + (m_config.n_eta_bins - 1) / nThreads;
 
     kernels::minmax_rad_kernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.eta_bin_views_buf, ctx.node_params_buf, ctx.bin_rads_buf,
-        nBinsPerBlock, m_config.n_eta_bins);
+        m_config.n_eta_bins);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
     ctx.bin_rads =
         collection_types<float>::host(2 * m_config.n_eta_bins, m_mr.host);
     m_copy.get()(vecmem::get_data(ctx.bin_rads_buf), ctx.bin_rads)->wait();
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     // 2. prepare input for the graph making part of the code:
 
@@ -496,7 +491,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     m_copy.get().setup(ctx.counters_buf)->ignore();
     m_copy.get().memset(ctx.counters_buf, 0)->ignore();
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     // 2. Find edges between spacepoint pairs
     ctx.nMaxEdges = m_config.max_edges_factor * ctx.nNodes;
@@ -520,7 +515,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         ctx.edge_params_buf, ctx.num_incoming_edges_buf, ctx.nMaxEdges,
         m_config.n_phi_bins);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
@@ -543,7 +538,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     m_copy.get()(vecmem::get_data(ctx.num_incoming_edges_buf), cusum)->ignore();
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     for (unsigned int k = 0; k < ctx.nNodes;
          k++) {  // TODO: Maybe use a GPU version of a scan? or std version?
@@ -552,7 +547,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     m_copy.get()(vecmem::get_data(cusum), ctx.num_incoming_edges_buf)->ignore();
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     // 3. link edges and nodes
 
@@ -566,7 +561,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         ctx.edge_nodes_buf, ctx.edge_links_buf, ctx.num_incoming_edges_buf,
         ctx.nEdges);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
@@ -592,7 +587,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         ctx.neighbours_buf, ctx.reIndexer_buf, ctx.counters_buf, ctx.nEdges,
         m_config.max_num_neighbours);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
@@ -601,7 +596,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     kernels::edgeReIndexingKernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.reIndexer_buf, ctx.counters_buf, ctx.nEdges);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
@@ -628,16 +623,14 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     m_copy.get().setup(ctx.output_graph_buf)->ignore();
 
     nThreads = 256;
-    unsigned int nEdgesPerBlock = nThreads * 64;
 
-    nBlocks = 1 + (ctx.nEdges - 1) / nEdgesPerBlock;
+    nBlocks = 1 + (ctx.nEdges - 1) / nThreads;
 
     kernels::graphCompressionKernel<<<nBlocks, nThreads, 0, stream>>>(
         ctx.node_index_buf, ctx.edge_nodes_buf, ctx.num_neighbours_buf,
-        ctx.neighbours_buf, ctx.reIndexer_buf, ctx.output_graph_buf,
-        nEdgesPerBlock, ctx.nEdges, m_config.max_num_neighbours);
+        ctx.neighbours_buf, ctx.reIndexer_buf, ctx.output_graph_buf, ctx.nEdges, m_config.max_num_neighbours);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
@@ -664,7 +657,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
     if (nEdgesLeft == 0)
         return {0, m_mr.main};
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     nThreads = 128;
     nBlocks = 1 + (nEdgesLeft - 1) / nThreads;
@@ -675,22 +668,22 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
             ctx.outgoing_paths_buf, ctx.counters_buf, iter, ctx.nConnectedEdges,
             m_config.max_num_neighbours, m_config.minLevel);
 
-        cudaStreamSynchronize(stream);
+        m_stream.get().synchronize();
     }
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 
     nThreads = 128;
     nBlocks = 1 + (ctx.nConnectedEdges - 1) / nThreads;
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     kernels::count_terminus_edges<<<nBlocks, nThreads, 0, stream>>>(
         ctx.outgoing_paths_buf, ctx.counters_buf, ctx.nConnectedEdges);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     // nPaths to terminus, nTerminusEdges
     unsigned int path_sizes[2];
@@ -747,7 +740,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
 
     TRACCC_DEBUG("nProps " << nProps);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     if (nProps == 0) {
         return {0, m_mr.main};
@@ -810,7 +803,7 @@ gbts_seeding_algorithm::output_type gbts_seeding_algorithm::operator()(
         m_config.seed_ambi_params.tight_bid_cot_threshold,
         m_config.seed_ambi_params.use_dropout);
 
-    cudaStreamSynchronize(stream);
+    m_stream.get().synchronize();
 
     ctx.nSeeds = m_copy.get().get_size(output_seeds);
 
