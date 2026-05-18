@@ -43,99 +43,340 @@ using float4 = traccc::float4;
 using float2 = traccc::float2;
 using int2 = traccc::int2;
 using short2 = traccc::short2;
+using half4 = traccc::half4;
 
-struct gbts_ctx {
-    // counters
-    unsigned int nSp{};
-    unsigned int nNodes{};
-    unsigned int nUsedBinPairs{};
-    unsigned int nMaxEdges{};
+namespace kernels {
 
-    unsigned int nEdges{};
-    unsigned int nConnections{};
-    unsigned int nConnectedEdges{};
-    unsigned int nSeeds{};
-    // nEdges, nConnections, nConnectedEdges, .., nSeeds
-    collection_types<unsigned int>::buffer counters_buf;
+// ---------------------------------------------------------------------------
+// Stage 1 — nodes-making kernels
+// ---------------------------------------------------------------------------
 
-    // device side graph building cuts
-    gbts_graph_building_params d_graph_building_params;
+__global__ void count_sp_by_layer(
+    const edm::spacepoint_collection::const_view spacepoints,
+    const edm::measurement_collection::const_view measurements,
+    const collection_types<short>::const_view volumeToLayerMap,
+    const collection_types<std::pair<unsigned int, unsigned int>>::const_view
+        surfaceToLayerMap,
+    const collection_types<char>::const_view layerType,
+    const collection_types<float4>::view reducedSP,
+    const collection_types<int>::view layerCounts,
+    const collection_types<short>::view spacepointsLayer, const float type1_max_width,
+    const unsigned int nSp, const unsigned long volumeMapSize,
+    const unsigned long surfaceMapSize, const bool doTauCut) {
 
-    // node making and binning
-    collection_types<int>::buffer layerCounts_buf;
-    collection_types<short>::buffer spacepointsLayer_buf;
-    // begin_idx + 1 for the surfaceToLayerMap or -layerBin if one to one
-    collection_types<short>::buffer volumeToLayerMap_buf;
-    collection_types<std::pair<unsigned int, unsigned int>>::buffer
-        surfaceToLayerMap_buf;  // surface_index, layerBin
-    collection_types<char>::buffer layerType_buf;
-    // conversion to original sp from post layer binning index
-    collection_types<int>::buffer original_sp_idx_buf;
-    // conversion to orignal sp/node index from post binning index
-    collection_types<int>::buffer node_index_buf;
+    device::count_sp_by_layer(details::global_index1(), spacepoints,
+                              measurements, volumeToLayerMap, surfaceToLayerMap,
+                              layerType, reducedSP, layerCounts,
+                              spacepointsLayer, type1_max_width, nSp,
+                              volumeMapSize, surfaceMapSize, doTauCut);
+}
 
-    // x,y,z,cluster width in eta
-    collection_types<float4>::buffer reducedSP_buf;
-    // layer binned reducedSP
-    collection_types<float4>::buffer sp_params_buf;
+__global__ void bin_sp_by_layer(
+    const collection_types<float4>::view sp_params,
+    const collection_types<float4>::const_view reducedSP,
+    const collection_types<int>::view layerCounts,
+    const collection_types<short>::const_view spacepointsLayer,
+    const collection_types<int>::view original_sp_idx, const unsigned int nSp) {
 
-    collection_types<std::pair<int, int>>::buffer layer_info_buf;
-    collection_types<std::pair<float, float>>::buffer layer_geo_buf;
+    device::bin_sp_by_layer(details::global_index1(), sp_params, reducedSP,
+                            layerCounts, spacepointsLayer, original_sp_idx,
+                            nSp);
+}
 
-    collection_types<int>::buffer node_eta_index_buf;
-    collection_types<int>::buffer node_phi_index_buf;
+__global__ void node_eta_binning(
+    const collection_types<float4>::const_view sp_params,
+    const collection_types<std::pair<int, int>>::const_view layer_info,
+    const collection_types<std::pair<float, float>>::const_view layer_geo,
+    const collection_types<int>::view node_eta_index,
+    const collection_types<int>::view layerCounts, const unsigned int nLayers) {
 
-    collection_types<int>::buffer eta_phi_histo_buf;
-    collection_types<int>::buffer phi_cusums_buf;
-    collection_types<int>::buffer eta_node_counter_buf;
+    device::node_eta_binning(blockIdx.x, threadIdx.x, blockDim.x, sp_params,
+                             layer_info, layer_geo, node_eta_index,
+                             layerCounts, nLayers);
+}
 
-    collection_types<int>::buffer eta_bin_views_buf;
-    // eta-bin views of the node_params array
-    collection_types<int>::host eta_bin_views;
+__global__ void eta_phi_histo(
+    const collection_types<int>::view node_phi_index,
+    const collection_types<int>::const_view node_eta_index,
+    const collection_types<int>::view eta_phi_histo,
+    const collection_types<float4>::const_view sp_params,
+    const unsigned int nNodes, const unsigned int nPhiBins) {
 
-    collection_types<float>::buffer bin_rads_buf;
-    collection_types<float>::host bin_rads;
+    device::eta_phi_histo(details::global_index1(), node_phi_index,
+                          node_eta_index, eta_phi_histo, sp_params, nNodes,
+                          nPhiBins);
+}
 
-    collection_types<int>::buffer bin_pair_views_buf;
-    collection_types<int>::host bin_pair_views;
+__global__ void eta_phi_counting(
+    const collection_types<int>::const_view eta_phi_histo,
+    const collection_types<int>::view eta_node_counter,
+    const collection_types<int>::view phi_cusums, const unsigned int nEtaBins,
+    const unsigned int nPhiBins) {
 
-    collection_types<float>::buffer bin_pair_dphi_buf;
-    collection_types<float>::host bin_pair_dphi;
-    // node making output
-    collection_types<float>::buffer node_params_buf;
+    device::eta_phi_counting(details::global_index1(), eta_phi_histo,
+                             eta_node_counter, phi_cusums, nEtaBins, nPhiBins);
+}
 
-    // GraphMaking
-    collection_types<int2>::buffer edge_nodes_buf;
-    collection_types<kernels::half4>::buffer edge_params_buf;
-    collection_types<int>::buffer num_incoming_edges_buf;
-    collection_types<int>::buffer edge_links_buf;
-    collection_types<unsigned char>::buffer num_neighbours_buf;
-    collection_types<int>::buffer reIndexer_buf;
-    collection_types<int>::buffer neighbours_buf;
-    // offload this for CPU-side seed extraction
-    collection_types<int>::buffer output_graph_buf;
+__global__ void eta_phi_prefix_sum(
+    const collection_types<int>::const_view eta_node_counter,
+    const collection_types<int>::view phi_cusums, const unsigned int nEtaBins,
+    const unsigned int nPhiBins) {
 
-    // message-passing CCA
-    // holds indices of the edges that need more CCA iterations
-    collection_types<int>::buffer active_edges_buf;
-    // d_levels[edge_idx] = the maxium length of seeds starting with this edge
-    collection_types<char>::buffer levels_buf;
-    // #paths, is terminus
-    collection_types<short2>::buffer outgoing_paths_buf;
+    device::eta_phi_prefix_sum(details::global_index1(), eta_node_counter,
+                               phi_cusums, nEtaBins, nPhiBins);
+}
 
-    // seed-extraction walkthrough
+__global__ void node_sorting(
+    const collection_types<float4>::const_view sp_params,
+    const collection_types<int>::const_view node_eta_index,
+    const collection_types<int>::const_view node_phi_index,
+    const collection_types<int>::view phi_cusums,
+    const collection_types<float>::view node_params,
+    const collection_types<int>::view node_index,
+    const collection_types<int>::const_view original_sp_idx,
+    const gbts_graph_building_params graph_building_params,
+    const unsigned int nNodes, const unsigned int nPhiBins) {
 
-    // edge_idx and prev path_store idx forms a uniuqe path through the graph
-    collection_types<int2>::buffer path_store_buf;
-    collection_types<int2>::buffer
-        seed_proposals_buf;  // int quality and final mini_state_idx
-    // first 32 bits are seed quality second 32 bits are seed_proposals index
-    collection_types<unsigned long long int>::buffer edge_bids_buf;
-    collection_types<unsigned long long int>::buffer hit_bids_buf;
-    // 0 as default/is real seed, 1 as maybe seed,
-    //-1 as maybe fake seed, -2 as fake
-    collection_types<char>::buffer seed_ambiguity_buf;
-};
+    device::node_sorting(details::global_index1(), sp_params, node_eta_index,
+                         node_phi_index, phi_cusums, node_params, node_index,
+                         original_sp_idx, graph_building_params, nNodes,
+                         nPhiBins);
+}
+
+__global__ void minmax_rad(
+    const collection_types<int>::const_view eta_bin_views,
+    const collection_types<float>::const_view node_params,
+    const collection_types<float>::view bin_rads, const unsigned int nEtaBins) {
+
+    device::minmax_rad(details::global_index1(), eta_bin_views, node_params,
+                       bin_rads, nEtaBins);
+}
+
+// ---------------------------------------------------------------------------
+// Stage 2 — graph-making kernels
+// ---------------------------------------------------------------------------
+
+__global__ void graph_edge_making(
+    const collection_types<int>::const_view bin_pair_views,
+    const collection_types<float>::const_view bin_pair_dphi,
+    const collection_types<float>::const_view node_params,
+    const gbts_graph_building_params graph_building_params,
+    unsigned int* nEdgesCounter, collection_types<int2>::view edge_nodes,
+    const collection_types<half4>::view edge_params,
+    const collection_types<int>::view num_outgoing_edges,
+    const unsigned int nMaxEdges, const unsigned int nPhiBins) {
+
+    __shared__ float tau_min[traccc::device::gbts_consts::node_buffer_length];
+    __shared__ float tau_max[traccc::device::gbts_consts::node_buffer_length];
+    __shared__ float phi[traccc::device::gbts_consts::node_buffer_length];
+    __shared__ float r[traccc::device::gbts_consts::node_buffer_length];
+    __shared__ float z[traccc::device::gbts_consts::node_buffer_length];
+    const traccc::cuda::barrier bar;
+
+    device::graph_edge_making(blockIdx.x, threadIdx.x, blockDim.x, bar,
+                              tau_min, tau_max, phi, r, z, bin_pair_views,
+                              bin_pair_dphi, node_params, graph_building_params,
+                              *nEdgesCounter, edge_nodes, edge_params,
+                              num_outgoing_edges, nMaxEdges, nPhiBins);
+}
+
+__global__ void graph_edge_linking(
+    const collection_types<int2>::const_view edge_nodes,
+    const collection_types<int>::view edge_links,
+    const collection_types<int>::view num_outgoing_edges,
+    const unsigned int nEdges) {
+
+    device::graph_edge_linking(details::global_index1(), edge_nodes, edge_links,
+                               num_outgoing_edges, nEdges);
+}
+
+__global__ void graph_edge_matching(
+    const gbts_graph_building_params graph_building_params,
+    const collection_types<half4>::const_view edge_params,
+    const collection_types<int2>::const_view edge_nodes,
+    const collection_types<int>::const_view num_outgoing_edges,
+    const collection_types<int>::const_view edge_links,
+    const collection_types<unsigned char>::view num_neighbours,
+    const collection_types<int>::view neighbours,
+    const collection_types<int>::view reIndexer, unsigned int* nConnectionsCounter,
+    const unsigned int nEdges, const unsigned int nMaxNei) {
+
+    device::graph_edge_matching(blockIdx.x, threadIdx.x, blockDim.x,
+                                graph_building_params, edge_params, edge_nodes,
+                                num_outgoing_edges, edge_links, num_neighbours,
+                                neighbours, reIndexer, *nConnectionsCounter,
+                                nEdges, nMaxNei);
+}
+
+__global__ void edge_re_indexing(collection_types<int>::view reIndexer,
+                                 unsigned int* nConnectedEdgesCounter,
+                                 const unsigned int nEdges) {
+
+    device::edge_re_indexing(details::global_index1(), reIndexer,
+                             *nConnectedEdgesCounter, nEdges);
+}
+
+__global__ void graph_compression(
+    const collection_types<int>::const_view orig_node_index,
+    const collection_types<int2>::const_view edge_nodes,
+    const collection_types<unsigned char>::const_view num_neighbours,
+    const collection_types<int>::const_view neighbours,
+    const collection_types<int>::const_view reIndexer,
+    const collection_types<int>::view output_graph, const unsigned int nEdges,
+    const unsigned int nMaxNei) {
+
+    device::graph_compression(details::global_index1(), orig_node_index,
+                              edge_nodes, num_neighbours, neighbours, reIndexer,
+                              output_graph, nEdges, nMaxNei);
+}
+
+// ---------------------------------------------------------------------------
+// Stage 3 — graph-processing kernels
+// ---------------------------------------------------------------------------
+
+__global__ void cca_iteration(
+    const collection_types<int>::const_view output_graph,
+    const collection_types<char>::view levels,
+    const collection_types<int>::view active_edges,
+    const collection_types<short2>::view outgoing_paths,
+    unsigned int* nActiveEdgesA, unsigned int* nActiveEdgesB,
+    unsigned int* nCCABlockCounter, const int iter, const unsigned int nEdges,
+    const unsigned int max_num_neighbours, const int minLevel) {
+
+    const traccc::cuda::barrier bar;
+
+    device::cca_iteration(blockIdx.x, threadIdx.x, blockDim.x,
+                          blockDim.x * gridDim.x, bar, output_graph, levels,
+                          active_edges, outgoing_paths, *nActiveEdgesA,
+                          *nActiveEdgesB, *nCCABlockCounter, iter, nEdges,
+                          max_num_neighbours, minLevel);
+}
+
+__global__ void count_terminus_edges(
+    const collection_types<short2>::view outgoing_paths,
+    unsigned int* nPathsCounter, unsigned int* nPathStoreSizeCounter,
+    const unsigned int nEdges) {
+
+    __shared__ int outgoingCount;
+    const traccc::cuda::barrier bar;
+
+    device::count_terminus_edges(blockIdx.x, threadIdx.x, blockDim.x, bar,
+                                 outgoingCount, outgoing_paths,
+                                 *nPathsCounter, *nPathStoreSizeCounter,
+                                 nEdges);
+}
+
+__global__ void add_terminus_to_path_store(
+    const collection_types<int2>::view path_store,
+    const collection_types<short2>::const_view outgoing_paths,
+    const unsigned int nEdges) {
+
+    device::add_terminus_to_path_store(details::global_index1(), path_store,
+                                       outgoing_paths, nEdges);
+}
+
+__global__ void fill_path_store(
+    const collection_types<int2>::view path_store,
+    const collection_types<int>::const_view output_graph,
+    const collection_types<char>::const_view levels,
+    unsigned int* nPathStoreSizeCounter, const unsigned int nTerminus,
+    const unsigned int nTerminusPerBlock, const unsigned int max_num_neighbours,
+    const unsigned int nPaths) {
+
+    __shared__ traccc::int2
+        live_paths[traccc::device::gbts_consts::live_path_buffer];
+    __shared__ int n_live_paths;
+    const traccc::cuda::barrier bar;
+
+    device::fill_path_store(blockIdx.x, threadIdx.x, blockDim.x, bar,
+                            live_paths, n_live_paths, path_store, output_graph,
+                            levels, *nPathStoreSizeCounter, nTerminus,
+                            nTerminusPerBlock, max_num_neighbours, nPaths);
+}
+
+__global__ void fit_segments(
+    const collection_types<float4>::const_view reducedSP,
+    const collection_types<int>::const_view output_graph,
+    const collection_types<int2>::const_view path_store,
+    const collection_types<int2>::view seed_proposals,
+    const collection_types<unsigned long long int>::view edge_bids,
+    const collection_types<char>::view seed_ambiguity,
+    unsigned int* nPathStoreSize, unsigned int* nPropsCounter,
+    const unsigned int nTerminusEdges, const int minLevel,
+    const unsigned int max_num_neighbours,
+    const gbts_seed_extraction_params seed_extraction_params) {
+
+    device::fit_segments(details::global_index1(), reducedSP, output_graph,
+                         path_store, seed_proposals, edge_bids, seed_ambiguity,
+                         *nPathStoreSize, *nPropsCounter, nTerminusEdges,
+                         minLevel, max_num_neighbours, seed_extraction_params);
+}
+
+__global__ void reset_edge_bids(
+    const collection_types<int2>::const_view path_store,
+    const collection_types<int2>::view seed_proposals,
+    const collection_types<unsigned long long int>::view edge_bids,
+    const collection_types<char>::view seed_ambiguity, const unsigned int nProps,
+    unsigned int* nRejectedPropsCounter, const int round) {
+
+    device::reset_edge_bids(details::global_index1(),
+                            blockDim.x * gridDim.x, path_store, seed_proposals,
+                            edge_bids, seed_ambiguity, nProps,
+                            *nRejectedPropsCounter, round);
+}
+
+__global__ void seeds_rebid_for_edges(
+    const collection_types<int2>::const_view path_store,
+    const collection_types<int2>::view seed_proposals,
+    const collection_types<unsigned long long int>::view edge_bids,
+    const collection_types<char>::view seed_ambiguity, const unsigned int nProps) {
+
+    device::seeds_rebid_for_edges(details::global_index1(),
+                                  blockDim.x * gridDim.x, path_store,
+                                  seed_proposals, edge_bids, seed_ambiguity,
+                                  nProps);
+}
+
+__global__ void seeds_bid_for_hits(
+    const collection_types<int>::const_view output_graph,
+    const collection_types<int2>::const_view seed_proposals,
+    const collection_types<int2>::const_view path_store,
+    const collection_types<char>::const_view seed_ambiguity,
+    const collection_types<unsigned long long int>::view hit_bids,
+    const unsigned int nProps, const int edge_size) {
+
+    device::seeds_bid_for_hits(details::global_index1(),
+                               blockDim.x * gridDim.x, output_graph,
+                               seed_proposals, path_store, seed_ambiguity,
+                               hit_bids, nProps, edge_size);
+}
+
+__global__ void gbts_seed_conversion(
+    const collection_types<int2>::const_view seed_proposals,
+    const collection_types<char>::const_view seed_ambiguity,
+    const collection_types<int2>::const_view path_store,
+    const collection_types<int>::const_view output_graph,
+    const collection_types<float4>::const_view sp_params,
+    const edm::seed_collection::view output_seeds,
+    const collection_types<unsigned long long int>::view hit_bids,
+    const unsigned int nProps, const unsigned int max_num_neighbours,
+    const float dcurv_cut_m, const float force_dropout_max_curv_m,
+    const float best_hit_frac, const float tight_bid_cot_threshold,
+    const bool use_dropout) {
+
+    device::gbts_seed_conversion(
+        details::global_index1(), blockDim.x * gridDim.x, seed_proposals,
+        seed_ambiguity, path_store, output_graph, sp_params, output_seeds,
+        hit_bids, nProps, max_num_neighbours, dcurv_cut_m,
+        force_dropout_max_curv_m, best_hit_frac, tight_bid_cot_threshold,
+        use_dropout);
+}
+
+}  // namespace kernels
+
+// ===========================================================================
+// gbts_seeding_algorithm: kernel launchers
+// ===========================================================================
 
 gbts_seeding_algorithm::gbts_seeding_algorithm(
     const gbts_seedfinder_config& cfg, const memory_resource& mr,
@@ -402,139 +643,36 @@ void gbts_seeding_algorithm::seeds_rebid_for_edges_kernel(
         payload.path_store, payload.seed_proposals, payload.edge_bids,
         payload.seed_ambiguity, payload.nProps);
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+}
 
-    nThreads = 128;
-    nBlocks = 1 + (ctx.nConnectedEdges - 1) / nThreads;
+void gbts_seeding_algorithm::seeds_bid_for_hits_kernel(
+    const seeds_bid_for_hits_kernel_payload& payload) const {
 
-    m_stream.get().synchronize();
+    const unsigned int n_threads = 128;
+    const unsigned int n_blocks = 1 + (payload.nSeeds - 1) / n_threads;
+    kernels::seeds_bid_for_hits<<<n_blocks, n_threads, 0,
+                                  details::get_stream(stream())>>>(
+        payload.output_graph, payload.seed_proposals, payload.path_store,
+        payload.seed_ambiguity, payload.hit_bids, payload.nProps,
+        payload.edge_size);
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+}
 
-    kernels::count_terminus_edges<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.outgoing_paths_buf, ctx.counters_buf, ctx.nConnectedEdges);
+void gbts_seeding_algorithm::gbts_seed_conversion_kernel(
+    const gbts_seed_conversion_kernel_payload& payload) const {
 
-    m_stream.get().synchronize();
-
-    // nPaths to terminus, nTerminusEdges
-    unsigned int path_sizes[2];
-    m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)->wait();
-    path_sizes[0] = h_counters[6];
-    path_sizes[1] = h_counters[7];
-
-    unsigned int pathsPerTerminus = 1 + (path_sizes[0] - 1) / path_sizes[1];
-
-    TRACCC_DEBUG(path_sizes[0] << "size of path store | nTerminusEdges "
-                               << path_sizes[1]);
-
-    ctx.path_store_buf = collection_types<int2>::buffer(
-        path_sizes[0] + path_sizes[1], m_mr.main);
-    m_copy.get().setup(ctx.path_store_buf)->ignore();
-    ctx.seed_proposals_buf =
-        collection_types<int2>::buffer(path_sizes[0], m_mr.main);
-    m_copy.get().setup(ctx.seed_proposals_buf)->ignore();
-    ctx.seed_ambiguity_buf =
-        collection_types<char>::buffer(path_sizes[0], m_mr.main);
-    m_copy.get().setup(ctx.seed_ambiguity_buf)->ignore();
-
-    ctx.edge_bids_buf = collection_types<unsigned long long int>::buffer(
-        ctx.nConnectedEdges, m_mr.main);
-    m_copy.get().setup(ctx.edge_bids_buf)->ignore();
-    m_copy.get().memset(ctx.edge_bids_buf, 0)->ignore();
-
-    nThreads = 128;
-    kernels::add_terminus_to_path_store<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.path_store_buf, ctx.outgoing_paths_buf, ctx.nConnectedEdges);
-
-    unsigned int terminusPerBlock = std::min(
-        nThreads, 1 + (traccc::device::gbts_consts::live_path_buffer - 1) /
-                          pathsPerTerminus);
-    nBlocks = 1 + (path_sizes[1] - 1) / terminusPerBlock;
-
-    kernels::fill_path_store<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.path_store_buf, ctx.output_graph_buf, ctx.levels_buf,
-        ctx.counters_buf, path_sizes[1], terminusPerBlock,
-        m_config.max_num_neighbours, path_sizes[0] + path_sizes[1]);
-
-    nThreads = 128;
-    nBlocks = 1 + (path_sizes[0] + path_sizes[1] - 1) / nThreads;
-
-    kernels::fit_segments<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.reducedSP_buf, ctx.output_graph_buf, ctx.path_store_buf,
-        ctx.seed_proposals_buf, ctx.edge_bids_buf, ctx.seed_ambiguity_buf,
-        ctx.counters_buf, path_sizes[1], m_config.minLevel,
-        m_config.max_num_neighbours, m_config.seed_extraction_params);
-
-    m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)
-        ->wait();  // Only counters 8 is used
-    unsigned int nProps = h_counters[8];
-
-    TRACCC_DEBUG("nProps " << nProps);
-
-    m_stream.get().synchronize();
-
-    if (nProps == 0) {
-        return {0, m_mr.main};
-    }
-
-    nThreads = 128;
-    nBlocks = 1 + (nProps - 1) / nThreads;
-
-    kernels::reset_edge_bids<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.path_store_buf, ctx.seed_proposals_buf, ctx.edge_bids_buf,
-        ctx.seed_ambiguity_buf, ctx.counters_buf, -1);
-
-    for (int round = 0; round < 5; ++round) {
-
-        m_copy.get().memset(ctx.edge_bids_buf, 0)->ignore();
-
-        kernels::seeds_rebid_for_edges<<<nBlocks, nThreads, 0, stream>>>(
-            ctx.path_store_buf, ctx.seed_proposals_buf, ctx.edge_bids_buf,
-            ctx.seed_ambiguity_buf, nProps);
-
-        kernels::reset_edge_bids<<<nBlocks, nThreads, 0, stream>>>(
-            ctx.path_store_buf, ctx.seed_proposals_buf, ctx.edge_bids_buf,
-            ctx.seed_ambiguity_buf, ctx.counters_buf, round);
-    }
-
-    m_copy.get()(vecmem::get_data(ctx.counters_buf), h_counters)
-        ->ignore();  // Only counters 9 is used
-    unsigned int nRejectedProps = h_counters[9];
-    ctx.nSeeds = nProps - nRejectedProps;
-
-    TRACCC_DEBUG("Rejected " << nRejectedProps << " out of " << nProps
-                             << " seed proposals");
-
-    // 8. convert to 3sp seeds and make output buffer
-    // allocate extra seed space for hit permutation
-    edm::seed_collection::buffer output_seeds(
-        2 * ctx.nSeeds, m_mr.main, vecmem::data::buffer_type::resizable);
-    m_copy.get().setup(output_seeds)->wait();
-
-    ctx.hit_bids_buf =
-        collection_types<unsigned long long int>::buffer(ctx.nSp, m_mr.main);
-    m_copy.get().setup(ctx.hit_bids_buf)->ignore();
-    m_copy.get().memset(ctx.hit_bids_buf, 0)->wait();
-
-    nThreads = 128;
-    nBlocks = 1 + (ctx.nSeeds - 1) / nThreads;
-
-    kernels::seeds_bid_for_hits<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.output_graph_buf, ctx.seed_proposals_buf, ctx.path_store_buf,
-        ctx.seed_ambiguity_buf, ctx.hit_bids_buf, nProps,
-        1 + 2 + m_config.max_num_neighbours);
-
-    kernels::gbts_seed_conversion_kernel<<<nBlocks, nThreads, 0, stream>>>(
-        ctx.seed_proposals_buf, ctx.seed_ambiguity_buf, ctx.path_store_buf,
-        ctx.output_graph_buf, ctx.reducedSP_buf, output_seeds, ctx.hit_bids_buf,
-        nProps, m_config.max_num_neighbours,
-        m_config.seed_ambi_params.dropout_dcurv_m,
-        m_config.seed_ambi_params.force_dropout_max_curv_m,
-        m_config.seed_ambi_params.best_hit_frac,
-        m_config.seed_ambi_params.tight_bid_cot_threshold,
-        m_config.seed_ambi_params.use_dropout);
-
-    m_stream.get().synchronize();
-
-    ctx.nSeeds = m_copy.get().get_size(output_seeds);
-
+    const unsigned int n_threads = 128;
+    const unsigned int n_blocks = 1 + (payload.nSeeds - 1) / n_threads;
+    kernels::gbts_seed_conversion<<<n_blocks, n_threads, 0,
+                                    details::get_stream(stream())>>>(
+        payload.seed_proposals, payload.seed_ambiguity, payload.path_store,
+        payload.output_graph, payload.reducedSP, payload.output_seeds,
+        payload.hit_bids, payload.nProps, payload.max_num_neighbours,
+        payload.seed_ambi_params.dropout_dcurv_m,
+        payload.seed_ambi_params.force_dropout_max_curv_m,
+        payload.seed_ambi_params.best_hit_frac,
+        payload.seed_ambi_params.tight_bid_cot_threshold,
+        payload.seed_ambi_params.use_dropout);
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
