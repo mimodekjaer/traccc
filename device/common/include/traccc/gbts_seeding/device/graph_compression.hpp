@@ -17,16 +17,40 @@
 
 namespace traccc::device {
 
+/// Pack kept edges into the compact "output graph" layout.
+///
+/// Each thread processes one original edge; if it survived re-indexing, the
+/// thread writes a record at its compact slot containing the source/destination
+/// original-SP indices, the neighbour count, and up to nMaxNei remapped
+/// neighbour indices.
+///
+/// @param[in]  globalIndex                  Current thread index
+/// @param[in]  d_orig_node_index_view       Sorted slot → original SP index
+/// @param[in]  d_edge_nodes_view            (src, dst) per original edge
+/// @param[in]  d_num_neighbours_view        Accepted neighbour count per edge
+/// @param[in]  d_neighbours_view            Neighbour edge indices per edge
+/// @param[in]  d_reIndexer_view             Old-edge → compact-edge map
+/// @param[out] d_output_graph_view          Compact graph in SoA layout: one
+///                                          column per field (node1, node2,
+///                                          nNei, nei0..neiN-1), each column
+///                                          a contiguous array of stride
+///                                          nConnectedEdges entries.
+/// @param[in]  nEdges                       Number of original edges
+/// @param[in]  nMaxNei                      Maximum neighbours per edge
+/// @param[in]  nConnectedEdges              SoA column stride (= number of
+///                                          compacted edges)
+///
 TRACCC_HOST_DEVICE
 inline void graph_compression(
-    global_index_t globalIndex,
-    const collection_types<int>::const_view& d_orig_node_index_view,
-    const collection_types<int2>::const_view& d_edge_nodes_view,
+    const global_index_t globalIndex,
+    const collection_types<unsigned int>::const_view& d_orig_node_index_view,
+    const collection_types<uint2>::const_view& d_edge_nodes_view,
     const collection_types<unsigned char>::const_view& d_num_neighbours_view,
-    const collection_types<int>::const_view& d_neighbours_view,
-    const collection_types<int>::const_view& d_reIndexer_view,
-    collection_types<int>::view d_output_graph_view, unsigned int nEdges,
-    unsigned int nMaxNei);
+    const collection_types<unsigned int>::const_view& d_neighbours_view,
+    const collection_types<unsigned int>::const_view& d_reIndexer_view,
+    const collection_types<unsigned int>::view& d_output_graph_view,
+    const unsigned int nEdges, const unsigned int nMaxNei,
+    const unsigned int nConnectedEdges);
 
 }  // namespace traccc::device
 

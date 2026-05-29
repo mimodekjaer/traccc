@@ -17,14 +17,28 @@
 
 namespace traccc::device {
 
+/// Assign each node a phi-bin index and accumulate the (eta, phi) histogram.
+///
+/// One thread per node computes phi from (x, y), maps it into the phi-bin
+/// range, writes the phi index back, and atomically increments the histogram
+/// cell at (eta, phi).
+///
+/// @param[in]  globalIndex             Current thread index
+/// @param[out] d_node_phi_index_view   Phi-bin index per node
+/// @param[in]  d_node_eta_index_view   Eta-bin index per node
+/// @param[out] d_eta_phi_histo_view    Flat (eta, phi) histogram
+/// @param[in]  d_sp_params_view        Layer-ordered (x, y, z, r) per SP
+/// @param[in]  nNodes                  Number of nodes
+/// @param[in]  nPhiBins                Number of phi bins per eta slice
+///
 TRACCC_HOST_DEVICE
 inline void eta_phi_histo(
-    global_index_t globalIndex,
-    collection_types<int>::view d_node_phi_index_view,
+    const global_index_t globalIndex,
+    const collection_types<int>::view d_node_phi_index_view,
     const collection_types<int>::const_view& d_node_eta_index_view,
-    collection_types<int>::view d_eta_phi_histo_view,
+    const collection_types<int>::view d_eta_phi_histo_view,
     const collection_types<float4>::const_view& d_sp_params_view,
-    unsigned int nNodes, unsigned int nPhiBins);
+    const unsigned int nNodes, const unsigned int nPhiBins);
 
 }  // namespace traccc::device
 

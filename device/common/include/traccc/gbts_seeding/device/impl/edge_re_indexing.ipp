@@ -15,11 +15,14 @@
 // VecMem include(s).
 #include <vecmem/memory/device_atomic_ref.hpp>
 
+// System include(s).
+#include <cstdint>
+
 namespace traccc::device {
 
 TRACCC_HOST_DEVICE
 inline void edge_re_indexing(const global_index_t globalIndex,
-                             collection_types<int>::view d_reIndexer_view,
+                             const collection_types<unsigned int>::view d_reIndexer_view,
                              unsigned int& nConnectedEdges,
                              const unsigned int nEdges) {
 
@@ -27,14 +30,14 @@ inline void edge_re_indexing(const global_index_t globalIndex,
         return;
     }
 
-    collection_types<int>::device d_reIndexer(d_reIndexer_view);
+    collection_types<unsigned int>::device d_reIndexer(d_reIndexer_view);
 
-    if (d_reIndexer[globalIndex] == -1) {
+    if (d_reIndexer[globalIndex] == static_cast<unsigned int>(-1)) {
         return;
     }
-    d_reIndexer[globalIndex] = static_cast<int>(
+    d_reIndexer[globalIndex] = 
         vecmem::device_atomic_ref<unsigned int>(nConnectedEdges)
-            .fetch_add(1u));
+            .fetch_add(1u);
 }
 
 }  // namespace traccc::device

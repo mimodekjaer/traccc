@@ -36,10 +36,6 @@ struct TRACCC_ALIGN(4) short2 {
     short x, y;
 };
 
-struct TRACCC_ALIGN(16) half4 {
-    float x, y, z, w;
-};
-
 inline TRACCC_HOST_DEVICE traccc::int2 make_int2(const int x, const int y) {
     return traccc::int2{x, y};
 }
@@ -73,15 +69,10 @@ inline TRACCC_HOST_DEVICE traccc::short2 make_short2(const short x,
     return traccc::short2{x, y};
 }
 
-inline TRACCC_HOST_DEVICE traccc::half4 make_half4(const float x, const float y,
-                                                   const float z,
-                                                   const float w) {
-    return traccc::half4{x, y, z, w};
-}
-
 namespace device {
 
-inline constexpr float gbts_pi_f = 3.14159265358979323846f;
+inline constexpr float gbts_pi_f = 3.1415927410125732422f;
+inline constexpr float gbts_two_pi_f = 2.0f * gbts_pi_f;
 
 }  // namespace device
 

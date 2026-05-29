@@ -21,27 +21,27 @@ namespace traccc::device {
 TRACCC_HOST_DEVICE
 inline void graph_edge_linking(
     const global_index_t globalIndex,
-    const collection_types<int2>::const_view& d_edge_nodes_view,
-    collection_types<int>::view d_edge_links_view,
-    collection_types<int>::view d_num_outgoing_edges_view,
+    const collection_types<uint2>::const_view& d_edge_nodes_view,
+    const collection_types<unsigned int>::view d_edge_links_view,
+    const collection_types<unsigned int>::view d_num_outgoing_edges_view,
     const unsigned int nEdges) {
 
     if (globalIndex >= nEdges) {
         return;
     }
 
-    const collection_types<int2>::const_device d_edge_nodes(d_edge_nodes_view);
-    collection_types<int>::device d_edge_links(d_edge_links_view);
-    collection_types<int>::device d_num_outgoing_edges(
+    const collection_types<uint2>::const_device d_edge_nodes(d_edge_nodes_view);
+    collection_types<unsigned int>::device d_edge_links(d_edge_links_view);
+    collection_types<unsigned int>::device d_num_outgoing_edges(
         d_num_outgoing_edges_view);
 
-    const int sharedNode = d_edge_nodes[globalIndex].y;
-    const int pos =
-        vecmem::device_atomic_ref<int>(
-            d_num_outgoing_edges[static_cast<unsigned int>(sharedNode)])
-            .fetch_add(-1);
-    d_edge_links[static_cast<unsigned int>(pos - 1)] =
-        static_cast<int>(globalIndex);
+    const unsigned int sharedNode = d_edge_nodes[globalIndex].y;
+    const unsigned int pos =
+        vecmem::device_atomic_ref<unsigned int>(
+            d_num_outgoing_edges[sharedNode])
+            .fetch_sub(1);
+    d_edge_links[pos - 1] =
+        static_cast<unsigned int>(globalIndex);
 }
 
 }  // namespace traccc::device

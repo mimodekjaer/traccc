@@ -24,7 +24,7 @@ namespace traccc::device {
 struct gbts_layerInfo {
     std::vector<char> type;
     // etaBin0 and numBins
-    std::vector<std::pair<int, int>> info;
+    std::vector<std::pair<unsigned int, unsigned int>> info;
     // minEta and deltaEta
     std::vector<std::pair<float, float>> geo;
 
@@ -34,7 +34,7 @@ struct gbts_layerInfo {
         geo.reserve(n);
     }
 
-    void addLayer(char layerType, int firstBin, int nBins, float minEta,
+    void addLayer(char layerType, unsigned int firstBin, unsigned int nBins, float minEta,
                   float etaBinWidth) {
         type.push_back(layerType);
         info.push_back(std::make_pair(firstBin, nBins));
@@ -50,51 +50,83 @@ struct gbts_consts {
     static constexpr unsigned short node_buffer_length = 128;
     static constexpr unsigned short live_path_buffer = 1024;
 
-    // access into output graph
+    // access into output graph (column indices in the SoA layout)
     static constexpr char node1 = 0;
     static constexpr char node2 = 1;
     static constexpr char nNei = 2;
     static constexpr char nei_start = 3;
 };
 
+/// SoA index into the compacted output_graph buffer.
+///
+/// The compacted graph is laid out column-major over edges: each of the
+/// (2 + 1 + nMaxNei) columns owns a contiguous array of `stride` entries
+/// (where `stride == nConnectedEdges`). Adjacent threads of a warp that hold
+/// adjacent edge indices therefore see contiguous addresses for the same
+/// column, giving coalesced global loads. (Row-major would put adjacent
+/// threads `edge_size * 4` bytes apart and force a separate sector per
+/// thread.)
+TRACCC_HOST_DEVICE inline unsigned int gbts_og_index(
+    unsigned int col, unsigned int edge, unsigned int stride) {
+    return col * stride + edge;
+}
+
 }  // namespace traccc::device
 
 namespace traccc {
 
-struct gbts_graph_building_params {
+// Tau-prediction cuts read by device::node_sorting.
+struct gbts_node_sorting_params {
+    // Slope of the lower-bound tau line.
+    float tMin_slope = 6.7f;
+    // Cluster-width offset applied to both tau bounds.
+    float offset = 0.2f;
+    // Asymptotic lower bound on the upper-tau line.
+    float tMax_min = 1.6f;
+    // Inverse-width correction term on the upper-tau line.
+    float tMax_correction = 0.15f;
+    // Slope of the upper-tau line.
+    float tMax_slope = 6.1f;
+};
 
-    // edge making cuts
-    float min_delta_phi = 0.015f;
-    float dphi_coeff = 2.2e-4f;
-    float min_delta_phi_low_dr = 0.002f;
-    float dphi_coeff_low_dr = 4.33e-4f;
-
+// Geometric / kinematic edge-making cuts read by device::graph_edge_making.
+struct gbts_edge_making_params {
+    // Minimum radius difference between two nodes to form an edge.
     float minDeltaRadius = 2.0f;
-
+    // Allowed range on the impact-parameter z0.
     float min_z0 = -160.0f;
     float max_z0 = 160.0f;
+    // Outer-radius used to extrapolate the edge for the ROI dz cut.
     float maxOuterRadius = 350.0f;
-    // how to get ROI dzdr
+    // Derived z-range of interest at the outer radius.
     float cut_zMinU = min_z0 - maxOuterRadius * 45.0f;
     float cut_zMaxU = max_z0 + maxOuterRadius * 45.0f;
-
+    // Maximum curvature allowed for an edge.
     float max_Kappa = 3.75e-4f;
+    // Per-curvature-regime d0 cuts.
     float low_Kappa_d0 = 0.00f;
     float high_Kappa_d0 = 0.0f;
+};
 
-    // tau prediction cut
-    float tMin_slope = 6.7f;
-    float offset = 0.2f;
-    float tMax_min = 1.6f;
-    float tMax_correction = 0.15f;
-    float tMax_slope = 6.1f;
-
-    float type1_max_width = 0.2f;
-
-    // edge matching cuts
+// Pair-matching cuts read by device::graph_edge_matching.
+struct gbts_edge_matching_params {
+    // Maximum phi difference between two edges sharing a node.
     float cut_dphi_max = 0.012f;
+    // Maximum curvature difference between two edges.
     float cut_dcurv_max = 0.001f;
+    // Maximum allowed tau-ratio difference between two edges.
     float cut_tau_ratio_max = 0.01f;
+};
+
+// Host-side dphi window used to compute bin_pair_dphi before launching
+// device::graph_edge_making (not passed to any kernel).
+struct gbts_dphi_window_params {
+    // Baseline phi window and dr-dependent slope.
+    float min_delta_phi = 0.015f;
+    float dphi_coeff = 2.2e-4f;
+    // Tighter window used when delta-R is small (< 60 mm).
+    float min_delta_phi_low_dr = 0.002f;
+    float dphi_coeff_low_dr = 4.33e-4f;
 };
 
 struct gbts_seed_extraction_params {
@@ -135,23 +167,38 @@ struct gbts_seed_ambi_params {
     float tight_bid_cot_threshold = 1.0f;
 };
 
+struct gbts_sp_counting_params {
+    // Maximum cluster width allowed on "type 1" (barrel) layers,
+    // passed as a scalar to device::count_sp_by_layer.
+    float type1_max_width = 0.2f;
+    // If true, apply the cluster-width / tau cut at SP-counting time.
+    bool doTauCut = true;
+};
+
 struct gbts_seedfinder_config {
     bool setLinkingScheme(
-        const std::vector<std::pair<int, std::vector<int>>>& binTables,
+        const std::vector<std::pair<unsigned int, std::vector<unsigned int>>>& binTables,
         const device::gbts_layerInfo layerInfo,
-        std::vector<std::pair<uint64_t, short>>& detrayGeoIDBinning,
-        float minPt, std::unique_ptr<const traccc::Logger> logger);
+        std::vector<std::pair<uint64_t, int16_t>>& detrayGeoIDBinning,
+        const float minPt, std::unique_ptr<const traccc::Logger> logger);
 
     // layer linking and geometry
     std::vector<std::pair<unsigned int, unsigned int>> binTables{};
     traccc::device::gbts_layerInfo layerInfo{};
     unsigned int nLayers = 0;
 
-    std::vector<short> volumeToLayerMap{};
+    std::vector<int16_t> volumeToLayerMap{};
     std::vector<std::pair<unsigned int, unsigned int>> surfaceToLayerMap{};
 
-    // tuned for 900 MeV pT cut and scaled by input minPt
-    gbts_graph_building_params graph_building_params{};
+    // Per-kernel parameter blocks (passed by value to the respective kernels),
+    // tuned for a 900 MeV pT cut and scaled by the input minPt.
+    gbts_node_sorting_params node_sorting{};
+    gbts_edge_making_params edge_making{};
+    gbts_edge_matching_params edge_matching{};
+    // Host-only — used to compute bin_pair_dphi before launching
+    // device::graph_edge_making.
+    gbts_dphi_window_params dphi_window{};
+    gbts_sp_counting_params sp_counting_params{};
     gbts_seed_extraction_params seed_extraction_params{};
     gbts_seed_ambi_params seed_ambi_params{};
 
@@ -161,8 +208,7 @@ struct gbts_seedfinder_config {
     // graph making maxiums
     unsigned int max_num_neighbours = 10;
     // graph extraction cuts
-    int minLevel = 3;  // equivlent to a cut of #seed edges or #spacepoints-1
-
+    unsigned char minLevel = 3;  // equivlent to a cut of #seed edges or #spacepoints-1
     // maxium number of edges to be created per node(spacepoint)
     unsigned int max_edges_factor = 10;
 };

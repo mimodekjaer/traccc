@@ -19,6 +19,9 @@
 #include <vecmem/memory/device_atomic_ref.hpp>
 
 // System include(s).
+#include <cstdint>
+
+// System include(s).
 #include <cmath>
 #include <cstring>
 
@@ -170,16 +173,16 @@ TRACCC_HOST_DEVICE inline bool kf_update(
                              dchi2_x * KF_params.weight_x -
                              dchi2_y * KF_params.weight_y);
 
-    for (int i = 0; i < 3; i++) {
-        new_ts->m_X[i] += Dx * new_ts->m_Cx(0, i) * resid_x;
+    for (unsigned int i = 0u; i < 3u; i++) {
+        new_ts->m_X[i] += Dx * new_ts->m_Cx(0, static_cast<int>(i)) * resid_x;
     }
 
     if (fabsf(new_ts->m_X[2]) * KF_params.inv_max_curvature > 1.0f) {
         return false;
     }
 
-    for (int i = 0; i < 2; i++) {
-        new_ts->m_Y[i] += Dx * new_ts->m_Cy(0, i) * resid_y;
+    for (unsigned int i = 0u; i < 2u; i++) {
+        new_ts->m_Y[i] += Dx * new_ts->m_Cy(0, static_cast<int>(i)) * resid_y;
     }
 
     const float z0 = new_ts->m_Y[0] - new_ts->m_refY * ts->m_Y[1];
@@ -216,19 +219,20 @@ TRACCC_HOST_DEVICE
 inline void fit_segments(
     const global_index_t globalIndex,
     const collection_types<float4>::const_view& d_sp_reduced_view,
-    const collection_types<int>::const_view& d_output_graph_view,
+    const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<int2>::const_view& d_path_store_view,
-    collection_types<int2>::view d_seed_proposals_view,
-    collection_types<unsigned long long int>::view d_edge_bids_view,
-    collection_types<char>::view d_seed_ambiguity_view,
+    const collection_types<int2>::view d_seed_proposals_view,
+    const collection_types<unsigned long long int>::view d_edge_bids_view,
+    const collection_types<char>::view d_seed_ambiguity_view,
     const unsigned int nPathStoreSize, unsigned int& nPropsCounter,
-    const unsigned int nTerminusEdges, const int minLevel,
+    const unsigned int nTerminusEdges, const unsigned char minLevel,
     const unsigned int max_num_neighbours,
+    const unsigned int nConnectedEdges,
     const gbts_seed_extraction_params& seed_extraction_params) {
 
     const collection_types<float4>::const_device d_sp_reduced(
         d_sp_reduced_view);
-    const collection_types<int>::const_device d_output_graph(
+    const collection_types<unsigned int>::const_device d_output_graph(
         d_output_graph_view);
     const collection_types<int2>::const_device d_path_store(d_path_store_view);
 
@@ -236,30 +240,33 @@ inline void fit_segments(
     if (path_idx >= nPathStoreSize) {
         return;
     }
-    const int edge_size = static_cast<int>(2u + 1u + max_num_neighbours);
+    (void)max_num_neighbours;  // SoA layout: column stride is nConnectedEdges.
 
-    char length = 1;
+    unsigned int length = 1;
     bool toggle = false;
     gbts_detail::edgeState state1;
     gbts_detail::edgeState state2;
 
     int2 path = d_path_store[path_idx];
 
-    const int nodeidx1 =
-        d_output_graph[static_cast<unsigned int>(
-            traccc::device::gbts_consts::node1 + edge_size * path.x)];
-    traccc::float4 node1 = d_sp_reduced[static_cast<unsigned int>(nodeidx1)];
-    const int nodeidx2 =
-        d_output_graph[static_cast<unsigned int>(
-            traccc::device::gbts_consts::node2 + edge_size * path.x)];
-    traccc::float4 node2 = d_sp_reduced[static_cast<unsigned int>(nodeidx2)];
+    const unsigned int nodeidx1 = d_output_graph[
+        traccc::device::gbts_og_index(traccc::device::gbts_consts::node1,
+                                      static_cast<unsigned int>(path.x),
+                                      nConnectedEdges)];
+    traccc::float4 node1 = d_sp_reduced[nodeidx1];
+    const unsigned int nodeidx2 = d_output_graph[
+        traccc::device::gbts_og_index(traccc::device::gbts_consts::node2,
+                                      static_cast<unsigned int>(path.x),
+                                      nConnectedEdges)];
+    traccc::float4 node2 = d_sp_reduced[nodeidx2];
 
     state1.initialize(node2, node1);
     while (path.y >= 0) {
         path = d_path_store[static_cast<unsigned int>(path.y)];
-        node2 = d_sp_reduced[static_cast<unsigned int>(
-            d_output_graph[static_cast<unsigned int>(
-                traccc::device::gbts_consts::node2 + edge_size * path.x)])];
+        node2 = d_sp_reduced[d_output_graph[
+            traccc::device::gbts_og_index(
+                traccc::device::gbts_consts::node2,
+                static_cast<unsigned int>(path.x), nConnectedEdges)]];
         if (toggle) {
             if (!gbts_detail::kf_update(&state1, &state2, node2,
                                         seed_extraction_params)) {
@@ -282,11 +289,11 @@ inline void fit_segments(
     } else {
         qual = static_cast<int>(seed_extraction_params.qual_scale * state1.m_J);
     }
-    const int prop_idx = static_cast<int>(
+    const unsigned int prop_idx =
         vecmem::device_atomic_ref<unsigned int>(nPropsCounter)
-            .fetch_add(1u));
+            .fetch_add(1u);
     add_seed_proposal(qual, static_cast<int>(path_idx),
-                      static_cast<unsigned int>(prop_idx),
+                      prop_idx,
                       d_seed_ambiguity_view, d_seed_proposals_view,
                       d_edge_bids_view, d_path_store_view, 1);
 }

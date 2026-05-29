@@ -15,16 +15,42 @@
 
 namespace traccc::device {
 
+/// Walk each terminus edge backwards along live levels, growing the path store.
+///
+/// One block expands nTerminusPerBlock terminus seeds at once using
+/// a shared "live paths" frontier.  At each step the block reads neighbour
+/// edges that match the next-lower level, atomically reserves slots in the
+/// path store via nPathStoreSizeCounter, and continues until all paths
+/// reach the graph boundary or until the frontier is empty.
+///
+/// @param[in]  blockIndex                CUDA block index
+/// @param[in]  threadIndex               CUDA thread index in block
+/// @param[in]  blockSize                 CUDA block size
+/// @param[in]  barrier                   Block-wide barrier
+/// @param[in,out] live_paths             Shared-mem frontier of in-flight paths
+/// @param[in,out] n_live_paths           Shared-mem frontier size
+/// @param[out] d_path_store_view         Path-store entries
+/// @param[in]  d_output_graph_view       Compact graph from graph_compression
+/// @param[in]  d_levels_view             Per-edge CCA level array
+/// @param[in,out] nPathStoreSizeCounter  Global atomic write cursor
+/// @param[in]  nTerminus                 Number of terminus edges
+/// @param[in]  nTerminusPerBlock         Terminus edges processed per block
+/// @param[in]  max_num_neighbours        Maximum neighbours per edge
+/// @param[in]  nPaths                    Upper bound on the number of paths
+/// @param[in]  nConnectedEdges           SoA stride of the output graph
+///
 template <concepts::barrier barrier_t>
 TRACCC_HOST_DEVICE inline void fill_path_store(
-    unsigned int blockIndex, unsigned int threadIndex, unsigned int blockSize,
-    const barrier_t& barrier, traccc::int2* live_paths, int& n_live_paths,
+    const unsigned int blockIndex, const unsigned int threadIndex,
+    const unsigned int blockSize, const barrier_t& barrier,
+    traccc::uint2* live_paths, int& n_live_paths,
     collection_types<int2>::view d_path_store_view,
-    const collection_types<int>::const_view& d_output_graph_view,
-    const collection_types<char>::const_view& d_levels_view,
-    unsigned int& nPathStoreSizeCounter, unsigned int nTerminus,
-    unsigned int nTerminusPerBlock, unsigned int max_num_neighbours,
-    unsigned int nPaths);
+    const collection_types<unsigned int>::const_view& d_output_graph_view,
+    const collection_types<unsigned char>::const_view& d_levels_view,
+    unsigned int& nPathStoreSizeCounter, const unsigned int nTerminus,
+    const unsigned int nTerminusPerBlock,
+    const unsigned int max_num_neighbours, const unsigned int nPaths,
+    const unsigned int nConnectedEdges);
 
 }  // namespace traccc::device
 

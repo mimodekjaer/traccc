@@ -22,7 +22,7 @@ TRACCC_HOST_DEVICE
 inline void node_phi_binning(
     const global_index_t globalIndex,
     const collection_types<float4>::const_view& d_sp_params_view,
-    collection_types<int>::view d_node_phi_index_view,
+    const collection_types<unsigned int>::view& d_node_phi_index_view,
     const unsigned int nNodes, const unsigned int nPhiBins) {
 
     if (globalIndex >= nNodes) {
@@ -30,7 +30,7 @@ inline void node_phi_binning(
     }
 
     const collection_types<float4>::const_device d_sp_params(d_sp_params_view);
-    collection_types<int>::device d_node_phi_index(d_node_phi_index_view);
+    collection_types<unsigned int>::device d_node_phi_index(d_node_phi_index_view);
 
     const float inv_phiSliceWidth =
         1.0f / (2.0f * traccc::device::gbts_pi_f /
@@ -47,7 +47,7 @@ inline void node_phi_binning(
         phiIdx += static_cast<int>(nPhiBins);
         phiIdx %= static_cast<int>(nPhiBins);
     }
-    d_node_phi_index[globalIndex] = phiIdx;
+    d_node_phi_index[globalIndex] = static_cast<unsigned int>(phiIdx);
 }
 
 }  // namespace traccc::device

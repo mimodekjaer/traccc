@@ -21,23 +21,26 @@ namespace traccc::device {
 
 TRACCC_HOST_DEVICE
 inline void seeds_bid_for_hits(
-    const global_index_t globalIndex, const unsigned int gridSize,
-    const collection_types<int>::const_view& d_output_graph_view,
+    const global_index_t globalIndex,
+    const unsigned int gridSize,
+    const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<int2>::const_view& d_seed_proposals_view,
     const collection_types<int2>::const_view& d_path_store_view,
     const collection_types<char>::const_view& d_seed_ambiguity_view,
-    collection_types<unsigned long long int>::view d_hit_bids_view,
-    const unsigned int nProps, const int edge_size) {
+    const collection_types<unsigned long long int>::view d_hit_bids_view,
+    const unsigned int nProps, const unsigned int edge_size,
+    const unsigned int nConnectedEdges) {
 
-    const collection_types<int>::const_device d_output_graph(
+    const collection_types<unsigned int>::const_device d_output_graph(
         d_output_graph_view);
     const collection_types<int2>::const_device d_path_store(d_path_store_view);
     const collection_types<char>::const_device d_seed_ambiguity(
         d_seed_ambiguity_view);
     const collection_types<int2>::const_device d_seed_proposals(
         d_seed_proposals_view);
-    collection_types<unsigned long long int>::device d_hit_bids(
-        d_hit_bids_view);
+    collection_types<unsigned long long int>::device d_hit_bids(d_hit_bids_view);
+
+    (void)edge_size;  // SoA layout: column stride is nConnectedEdges.
 
     for (unsigned int prop_idx = globalIndex; prop_idx < nProps;
          prop_idx += gridSize) {
@@ -52,20 +55,23 @@ inline void seeds_bid_for_hits(
         int2 path = make_int2(0, prop.y);
         while (path.y >= 0) {
             path = d_path_store[static_cast<unsigned int>(path.y)];
-            const int sp_idx =
-                d_output_graph[traccc::device::gbts_consts::node1 +
-                               edge_size * path.x];
+            const unsigned int sp_idx = d_output_graph[
+                traccc::device::gbts_og_index(
+                    traccc::device::gbts_consts::node1,
+                    static_cast<unsigned int>(path.x), nConnectedEdges)];
             vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
-                d_hit_bids[static_cast<unsigned int>(sp_idx)]);
+                d_hit_bids[sp_idx]);
             unsigned long long int old_val = atomic_bid.load();
             while (seed_bid > old_val &&
                    !atomic_bid.compare_exchange_strong(old_val, seed_bid)) {
             }
         }
-        const int sp_idx = d_output_graph[traccc::device::gbts_consts::node2 +
-                                          edge_size * path.x];
+        const int sp_idx = d_output_graph[
+            traccc::device::gbts_og_index(
+                traccc::device::gbts_consts::node2,
+                static_cast<unsigned int>(path.x), nConnectedEdges)];
         vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
-            d_hit_bids[static_cast<unsigned int>(sp_idx)]);
+            d_hit_bids[sp_idx]);
         unsigned long long int old_val = atomic_bid.load();
         while (seed_bid > old_val &&
                !atomic_bid.compare_exchange_strong(old_val, seed_bid)) {

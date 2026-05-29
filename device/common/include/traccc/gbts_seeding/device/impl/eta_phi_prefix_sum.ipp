@@ -17,8 +17,8 @@ namespace traccc::device {
 TRACCC_HOST_DEVICE
 inline void eta_phi_prefix_sum(
     const global_index_t globalIndex,
-    const collection_types<int>::const_view& d_eta_node_counter_view,
-    collection_types<int>::view d_phi_cusums_view,
+    const collection_types<unsigned int>::const_view& d_eta_node_counter_view,
+    const collection_types<unsigned int>::view& d_phi_cusums_view,
     const unsigned int maxEtaBin, const unsigned int nPhiBins) {
 
     if (globalIndex >= maxEtaBin) {
@@ -28,12 +28,12 @@ inline void eta_phi_prefix_sum(
         return;
     }
 
-    const collection_types<int>::const_device d_eta_node_counter(
+    const collection_types<unsigned int>::const_device d_eta_node_counter(
         d_eta_node_counter_view);
-    collection_types<int>::device d_phi_cusums(d_phi_cusums_view);
+    collection_types<unsigned int>::device d_phi_cusums(d_phi_cusums_view);
 
     const unsigned int offset = nPhiBins * globalIndex;
-    const int val0 = d_eta_node_counter[globalIndex - 1];
+    const unsigned int val0 = d_eta_node_counter[globalIndex - 1];
 
     for (unsigned int phiIdx = 0; phiIdx < nPhiBins; phiIdx++) {
         d_phi_cusums[offset + phiIdx] += val0;

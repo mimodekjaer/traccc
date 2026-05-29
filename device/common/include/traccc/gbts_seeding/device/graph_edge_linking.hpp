@@ -17,13 +17,26 @@
 
 namespace traccc::device {
 
+/// Compute each edge's slot in its destination node's incoming-edge list.
+///
+/// One thread per edge atomically increments the per-destination-node count
+/// in d_num_outgoing_edges_view and records the returned slot in
+/// d_edge_links_view.  After this kernel the count buffer has been turned
+/// into a write cursor that graph_edge_matching can read sequentially.
+///
+/// @param[in]  globalIndex                   Current thread index
+/// @param[in]  d_edge_nodes_view             (src, dst) per edge
+/// @param[out] d_edge_links_view             Per-edge slot in dst's list
+/// @param[in,out] d_num_outgoing_edges_view  Per-node prefix-sum write cursor
+/// @param[in]  nEdges                        Number of edges
+///
 TRACCC_HOST_DEVICE
 inline void graph_edge_linking(
-    global_index_t globalIndex,
-    const collection_types<int2>::const_view& d_edge_nodes_view,
-    collection_types<int>::view d_edge_links_view,
-    collection_types<int>::view d_num_outgoing_edges_view,
-    unsigned int nEdges);
+    const global_index_t globalIndex,
+    const collection_types<uint2>::const_view& d_edge_nodes_view,
+    const collection_types<unsigned int>::view d_edge_links_view,
+    const collection_types<unsigned int>::view d_num_outgoing_edges_view,
+    const unsigned int nEdges);
 
 }  // namespace traccc::device
 

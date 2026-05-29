@@ -25,71 +25,79 @@ namespace traccc::device {
 template <concepts::barrier barrier_t>
 TRACCC_HOST_DEVICE inline void graph_edge_making(
     const unsigned int blockIndex, const unsigned int threadIndex,
-    const unsigned int blockSize, const barrier_t& barrier, float* tau_min,
-    float* tau_max, float* phi, float* r, float* z,
-    const collection_types<int>::const_view& d_bin_pair_views_view,
+    const unsigned int blockSize, const barrier_t& barrier, float* phi,
+    float4* node_pack,
+    const collection_types<unsigned int>::const_view& d_bin_pair_views_view,
     const collection_types<float>::const_view& d_bin_pair_dphi_view,
     const collection_types<float>::const_view& d_node_params_view,
-    const gbts_graph_building_params& d_graph_building_params,
+    const gbts_edge_making_params& d_gbts_edge_making_params,
     unsigned int& nEdgesCounter,
-    collection_types<int2>::view d_edge_nodes_view,
-    collection_types<half4>::view d_edge_params_view,
-    collection_types<int>::view d_num_outgoing_edges_view,
+    const collection_types<uint2>::view d_edge_nodes_view,
+    const collection_types<float>::view d_edge_exp_eta_view,
+    const collection_types<float>::view d_edge_curv_view,
+    const collection_types<float>::view d_edge_phi_z_view,
+    const collection_types<float>::view d_edge_phi_w_view,
+    const collection_types<unsigned int>::view d_num_outgoing_edges_view,
     const unsigned int nMaxEdges, const unsigned int nPhiBins) {
 
-    const collection_types<int>::const_device d_bin_pair_views(
+    const collection_types<unsigned int>::const_device d_bin_pair_views(
         d_bin_pair_views_view);
     const collection_types<float>::const_device d_bin_pair_dphi(
         d_bin_pair_dphi_view);
     const collection_types<float>::const_device d_node_params(
         d_node_params_view);
-    collection_types<int2>::device d_edge_nodes(d_edge_nodes_view);
-    collection_types<half4>::device d_edge_params(d_edge_params_view);
-    collection_types<int>::device d_num_outgoing_edges(
+    collection_types<uint2>::device d_edge_nodes(d_edge_nodes_view);
+    collection_types<float>::device d_edge_exp_eta(d_edge_exp_eta_view);
+    collection_types<float>::device d_edge_curv(d_edge_curv_view);
+    collection_types<float>::device d_edge_phi_z(d_edge_phi_z_view);
+    collection_types<float>::device d_edge_phi_w(d_edge_phi_w_view);
+    collection_types<unsigned int>::device d_num_outgoing_edges(
         d_num_outgoing_edges_view);
 
     const float deltaPhi = d_bin_pair_dphi[blockIndex];
 
-    const unsigned int begin_bin1 = static_cast<unsigned int>(
-        d_bin_pair_views[4u * blockIndex]);
-    const unsigned int begin_bin2 = static_cast<unsigned int>(
-        d_bin_pair_views[4u * blockIndex + 2u]);
-    const unsigned int num_nodes1 =
-        static_cast<unsigned int>(d_bin_pair_views[4u * blockIndex + 1u]) -
+    const unsigned int begin_bin1 = d_bin_pair_views[4u * blockIndex];
+    const unsigned int begin_bin2 = d_bin_pair_views[4u * blockIndex + 2u];
+    const unsigned int num_nodes1 = d_bin_pair_views[4u * blockIndex + 1u] -
         begin_bin1;
-    const unsigned int num_nodes2 =
-        static_cast<unsigned int>(d_bin_pair_views[4u * blockIndex + 3u]) -
+    const unsigned int num_nodes2 = d_bin_pair_views[4u * blockIndex + 3u] -
         begin_bin2;
 
-    const float minDeltaRad = d_graph_building_params.minDeltaRadius;
-    const float min_z0 = d_graph_building_params.min_z0;
-    const float max_z0 = d_graph_building_params.max_z0;
-    const float maxOuterRad = d_graph_building_params.maxOuterRadius;
-    const float min_zU = d_graph_building_params.cut_zMinU;
-    const float max_zU = d_graph_building_params.cut_zMaxU;
-    const float max_kappa = d_graph_building_params.max_Kappa;
-    const float low_Kappa_d0 = d_graph_building_params.low_Kappa_d0;
-    const float high_Kappa_d0 = d_graph_building_params.high_Kappa_d0;
+    const float minDeltaRad = d_gbts_edge_making_params.minDeltaRadius;
+    const float min_z0 = d_gbts_edge_making_params.min_z0;
+    const float max_z0 = d_gbts_edge_making_params.max_z0;
+    const float maxOuterRad = d_gbts_edge_making_params.maxOuterRadius;
+    const float min_zU = d_gbts_edge_making_params.cut_zMinU;
+    const float max_zU = d_gbts_edge_making_params.cut_zMaxU;
+    const float max_kappa = d_gbts_edge_making_params.max_Kappa;
+    const float low_Kappa_d0 = d_gbts_edge_making_params.low_Kappa_d0;
+    const float high_Kappa_d0 = d_gbts_edge_making_params.high_Kappa_d0;
 
     for (unsigned int idx = threadIndex; idx < num_nodes1; idx += blockSize) {
         const unsigned int offset = 5u * (idx + begin_bin1);
-        tau_min[idx] = d_node_params[offset];
-        tau_max[idx] = d_node_params[offset + 1u];
+        const float tau_min_v = d_node_params[offset];
+        const float tau_max_v = d_node_params[offset + 1u];
         phi[idx] = d_node_params[offset + 2u];
-        r[idx] = d_node_params[offset + 3u];
-        z[idx] = d_node_params[offset + 4u];
+        const float r_v = d_node_params[offset + 3u];
+        const float z_v = d_node_params[offset + 4u];
+        node_pack[idx] = make_float4(r_v, z_v, tau_min_v, tau_max_v);
     }
 
     barrier.blockBarrier();
 
-    int last_n1 = 0;
-
+    // Hoist loop-invariants out of the n2 loop.
+    const float phi_front = phi[0];
+    const float phi_back = phi[num_nodes1 - 1u];
     const float phi_bin_width =
         2.0f * traccc::device::gbts_pi_f / static_cast<float>(nPhiBins);
+    const float break_threshold =
+        deltaPhi + phi_bin_width - traccc::device::gbts_pi_f;
+
+    unsigned int last_n1 = 0u;
 
     for (unsigned int n2Idx = threadIndex; n2Idx < num_nodes2;
          n2Idx += blockSize) {
-        int n1Idx = last_n1;
+        unsigned int n1Idx = last_n1;
         const unsigned int globalIdx2 = begin_bin2 + n2Idx;
         const unsigned int o2 = 5u * globalIdx2;
         const float phi2 = d_node_params[o2 + 2u];
@@ -109,20 +117,19 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
         min_phi1 -= phi_bin_width;
 
         if (!boundary) {
-            if (phi[0] > max_phi1) {
+            if (phi_front > max_phi1) {
                 continue;
             }
-            if (phi[num_nodes1 - 1u] < min_phi1) {
-                if (phi[0] >
-                    deltaPhi + phi_bin_width - traccc::device::gbts_pi_f) {
+            if (phi_back < min_phi1) {
+                if (phi_front > break_threshold) {
                     break;
                 }
                 continue;
             }
         } else {
-            if (phi[0] < max_phi1) {
+            if (phi_front < max_phi1) {
                 n1Idx = 0;
-            } else if (phi[num_nodes1 - 1u] < min_phi1) {
+            } else if (phi_back < min_phi1) {
                 continue;
             }
         }
@@ -132,10 +139,12 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
         const float r2 = d_node_params[o2 + 3u];
         const float z2 = d_node_params[o2 + 4u];
 
-        for (; n1Idx < static_cast<int>(num_nodes1); n1Idx++) {
-            const float phi1 = phi[n1Idx];
-
-            if (!boundary) {
+        // boundary is loop-invariant for the inner loop; hoisting saves a
+        // per-iteration branch and lets the compiler specialise the dphi
+        // wrap-around.
+        if (!boundary) {
+            for (; n1Idx < num_nodes1; n1Idx++) {
+                const float phi1 = phi[n1Idx];
                 if (phi1 > max_phi1) {
                     break;
                 }
@@ -143,75 +152,133 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
                     continue;
                 }
                 last_n1 = n1Idx;
-            } else {
+
+                const float4 p = node_pack[n1Idx];
+                const float r1 = p.x;
+                const float dr = r2 - r1;
+                if (dr < minDeltaRad) {
+                    continue;
+                }
+                const float z1 = p.y;
+                const float dz = z2 - z1;
+                const float inv_dr = 1.0f / dr;
+                const float tau = dz * inv_dr;
+                const float ftau = fabsf(tau);
+
+                if (ftau > 36.0f) { // ~4.3 eta detector acceptance
+                    continue;
+                }
+                if ((ftau < tau_min2) || (ftau > tau_max2)) {
+                    continue;
+                }
+                if ((ftau < p.z) || (ftau > p.w)) {
+                    continue;
+                }
+                const float z0 = z1 - r1 * tau;
+                if ((z0 < min_z0) || (z0 > max_z0)) {
+                    continue;
+                }
+                const float zouter = z0 + maxOuterRad * tau;
+                if (zouter < min_zU || zouter > max_zU) {
+                    continue;
+                }
+                const float dphi = phi2 - phi1;
+                if (fabsf(dphi) > deltaPhi) {
+                    continue;
+                }
+                const float curv = dphi * inv_dr;
+                const float d0_for_max_curv =
+                    r1 * r2 * (fabsf(curv) - max_kappa);
+                const float d0_max =
+                    (ftau < 4.0f) ? low_Kappa_d0 : high_Kappa_d0;
+                if (d0_for_max_curv > d0_max) {
+                    continue;
+                }
+                const unsigned int nEdges =
+                    vecmem::device_atomic_ref<unsigned int>(nEdgesCounter).fetch_add(1u);
+                if (nEdges < nMaxEdges) {
+                    const float exp_eta = sqrtf(1.0f + tau * tau) - tau;
+                    vecmem::device_atomic_ref<unsigned int>(
+                        d_num_outgoing_edges[begin_bin1 + n1Idx])
+                        .fetch_add(1u);
+                    d_edge_nodes[nEdges] =
+                        make_uint2(globalIdx2, begin_bin1 + n1Idx);
+                    d_edge_exp_eta[nEdges] = exp_eta;
+                    d_edge_curv[nEdges]    = curv;
+                    d_edge_phi_z[nEdges]   = phi2 + curv * r2;
+                    d_edge_phi_w[nEdges]   = phi1 + curv * r1;
+                }
+            }
+        } else {
+            for (; n1Idx < num_nodes1; n1Idx++) {
+                const float phi1 = phi[n1Idx];
                 if (phi1 > max_phi1 && phi1 < min_phi1) {
                     if (n1Idx < last_n1) {
                         n1Idx = last_n1 - 1;
                     }
                     continue;
                 }
-            }
 
-            const float r1 = r[n1Idx];
-            const float dr = r2 - r1;
-            if (dr < minDeltaRad) {
-                continue;
-            }
-            const float z1 = z[n1Idx];
-            const float dz = z2 - z1;
-            const float tau = dz / dr;
-            const float ftau = fabsf(tau);
+                const float4 p = node_pack[n1Idx];
+                const float r1 = p.x;
+                const float dr = r2 - r1;
+                if (dr < minDeltaRad) {
+                    continue;
+                }
+                const float z1 = p.y;
+                const float dz = z2 - z1;
+                const float inv_dr = 1.0f / dr;
+                const float tau = dz * inv_dr;
+                const float ftau = fabsf(tau);
 
-            if (ftau > 36.0f) {
-                continue;
-            }
-            if ((ftau < tau_min2) || (ftau > tau_max2)) {
-                continue;
-            }
-            if ((ftau < tau_min[n1Idx]) || (ftau > tau_max[n1Idx])) {
-                continue;
-            }
-            const float z0 = z1 - r1 * tau;
-            if ((z0 < min_z0) || (z0 > max_z0)) {
-                continue;
-            }
-            const float zouter = z0 + maxOuterRad * tau;
-            if (zouter < min_zU || zouter > max_zU) {
-                continue;
-            }
-            float dphi = phi2 - phi1;
-            if (boundary) {
+                if (ftau > 36.0f) {
+                    continue;
+                }
+                if ((ftau < tau_min2) || (ftau > tau_max2)) {
+                    continue;
+                }
+                if ((ftau < p.z) || (ftau > p.w)) {
+                    continue;
+                }
+                const float z0 = z1 - r1 * tau;
+                if ((z0 < min_z0) || (z0 > max_z0)) {
+                    continue;
+                }
+                const float zouter = z0 + maxOuterRad * tau;
+                if (zouter < min_zU || zouter > max_zU) {
+                    continue;
+                }
+                float dphi = phi2 - phi1;
                 if (dphi < -traccc::device::gbts_pi_f) {
                     dphi += 2.0f * traccc::device::gbts_pi_f;
                 } else if (dphi > traccc::device::gbts_pi_f) {
                     dphi -= 2.0f * traccc::device::gbts_pi_f;
                 }
-            }
-            if (fabsf(dphi) > deltaPhi) {
-                continue;
-            }
-            const float curv = dphi / dr;
-            const float d0_for_max_curv =
-                r1 * r2 * (fabsf(curv) - max_kappa);
-            const float d0_max =
-                (ftau < 4.0f) ? low_Kappa_d0 : high_Kappa_d0;
-            if (d0_for_max_curv > d0_max) {
-                continue;
-            }
-            const unsigned int nEdges =
-                vecmem::device_atomic_ref<unsigned int>(nEdgesCounter)
-                    .fetch_add(1u);
-            if (nEdges < nMaxEdges) {
-                const float exp_eta = sqrtf(1.0f + tau * tau) - tau;
-                vecmem::device_atomic_ref<int>(
-                    d_num_outgoing_edges[begin_bin1 +
-                                         static_cast<unsigned int>(n1Idx)])
-                    .fetch_add(1);
-                d_edge_nodes[nEdges] =
-                    make_int2(static_cast<int>(globalIdx2),
-                              static_cast<int>(begin_bin1) + n1Idx);
-                d_edge_params[nEdges] = make_half4(
-                    exp_eta, curv, phi2 + curv * r2, phi1 + curv * r1);
+                if (fabsf(dphi) > deltaPhi) {
+                    continue;
+                }
+                const float curv = dphi * inv_dr;
+                const float d0_for_max_curv =
+                    r1 * r2 * (fabsf(curv) - max_kappa);
+                const float d0_max =
+                    (ftau < 4.0f) ? low_Kappa_d0 : high_Kappa_d0;
+                if (d0_for_max_curv > d0_max) {
+                    continue;
+                }
+                const unsigned int nEdges = 
+                    vecmem::device_atomic_ref<unsigned int>(nEdgesCounter).fetch_add(1u);
+                if (nEdges < nMaxEdges) {
+                    const float exp_eta = sqrtf(1.0f + tau * tau) - tau;
+                    vecmem::device_atomic_ref<unsigned int>(
+                        d_num_outgoing_edges[begin_bin1 + n1Idx])
+                        .fetch_add(1u);
+                    d_edge_nodes[nEdges] =
+                        make_uint2(globalIdx2, begin_bin1 + n1Idx);
+                    d_edge_exp_eta[nEdges] = exp_eta;
+                    d_edge_curv[nEdges]    = curv;
+                    d_edge_phi_z[nEdges]   = phi2 + curv * r2;
+                    d_edge_phi_w[nEdges]   = phi1 + curv * r1;
+                }
             }
         }
     }

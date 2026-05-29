@@ -24,6 +24,7 @@
 // System include(s).
 #include <array>
 #include <climits>
+#include <cstdint>
 #include <utility>
 
 namespace traccc::device {
@@ -37,13 +38,13 @@ inline void count_sp_by_layer(
     const collection_types<std::pair<unsigned int, unsigned int>>::const_view&
         surfaceToLayerMap_view,
     const collection_types<char>::const_view& layerType_view,
-    collection_types<float4>::view reducedSP_view,
-    collection_types<int>::view layerCounts_view,
-    collection_types<short>::view spacepointsLayer_view,
-    const float type1_max_width, const unsigned int nSp,
-    const long unsigned int volumeMapSize,
-    const long unsigned int surfaceMapSize, const bool doTauCut) {
-
+    const collection_types<float4>::view reducedSP_view,
+    const collection_types<unsigned int>::view layerCounts_view,
+    const collection_types<short>::view spacepointsLayer_view,
+    const unsigned int nSp,
+    const unsigned long int volumeMapSize, const unsigned long int surfaceMapSize,
+    const gbts_sp_counting_params sp_counting_params) {
+    
     if (globalIndex >= nSp) {
         return;
     }
@@ -58,7 +59,7 @@ inline void count_sp_by_layer(
         surfaceToLayerMap(surfaceToLayerMap_view);
     const collection_types<char>::const_device layerType(layerType_view);
 
-    collection_types<int>::device layerCounts(layerCounts_view);
+    collection_types<unsigned int>::device layerCounts(layerCounts_view);
     collection_types<short>::device spacepointsLayer(spacepointsLayer_view);
     collection_types<float4>::device reducedSP(reducedSP_view);
 
@@ -67,12 +68,10 @@ inline void count_sp_by_layer(
         measurements.at(spacepoint.measurement_index_1());
 
     const detray::geometry::identifier geo_id = measurement.surface_link();
+    const unsigned int volume = geo_id.volume();
+    const short begin_or_bin =
+        (volume < volumeMapSize) ? volumeToLayerMap[volume] : SHRT_MAX;
 
-    if (geo_id.volume() > volumeMapSize) {
-        reducedSP[globalIndex].w = -CHAR_MAX - 1;
-        return;
-    }
-    const short begin_or_bin = volumeToLayerMap[geo_id.volume()];
     if (begin_or_bin == SHRT_MAX) {
         reducedSP[globalIndex].w = -CHAR_MAX - 1;
         return;
@@ -82,8 +81,7 @@ inline void count_sp_by_layer(
         const unsigned int surface_index =
             static_cast<unsigned int>(geo_id.index());
 
-        for (unsigned int surface =
-                 static_cast<unsigned int>(-1 * (begin_or_bin + 1));
+        for (unsigned int surface = -1 * (begin_or_bin + 1);
              surface < surfaceMapSize; surface++) {
 
             const std::pair<unsigned int, unsigned int> surfaceBinPair =
@@ -98,15 +96,15 @@ inline void count_sp_by_layer(
     }
     float cluster_diameter = measurement.diameter();
     const int type = static_cast<int>(layerType[layerIdx]);
-    if (type == 1 && cluster_diameter > type1_max_width) {
+    if (type == 1 && cluster_diameter > sp_counting_params.type1_max_width) {
         reducedSP[globalIndex].w = -CHAR_MAX - 1;
         return;
     }
     cluster_diameter =
-        (doTauCut && type != 0) ? static_cast<float>(-1 * type)
+        (sp_counting_params.doTauCut && type != 0) ? static_cast<float>(-1 * type)
                                 : cluster_diameter;
 
-    vecmem::device_atomic_ref<int>(layerCounts[layerIdx]).fetch_add(1);
+    vecmem::device_atomic_ref<unsigned int>(layerCounts[layerIdx]).fetch_add(1u);
     spacepointsLayer[globalIndex] = static_cast<short>(layerIdx);
     const std::array<float, 3u> pos = spacepoint.global();
     reducedSP[globalIndex] = make_float4(pos[0], pos[1], pos[2],

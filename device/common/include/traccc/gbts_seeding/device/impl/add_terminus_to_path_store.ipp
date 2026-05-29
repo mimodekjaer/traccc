@@ -18,7 +18,7 @@ namespace traccc::device {
 TRACCC_HOST_DEVICE
 inline void add_terminus_to_path_store(
     const global_index_t globalIndex,
-    collection_types<int2>::view d_path_store_view,
+    const collection_types<int2>::view d_path_store_view,
     const collection_types<short2>::const_view& d_outgoing_paths_view,
     const unsigned int nEdges) {
 

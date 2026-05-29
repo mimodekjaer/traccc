@@ -26,33 +26,30 @@ inline void bin_sp_by_layer(
     const global_index_t globalIndex,
     const collection_types<float4>::view sp_params_view,
     const collection_types<float4>::const_view& reducedSP_view,
-    const collection_types<int>::view layerCounts_view,
+    const collection_types<unsigned int>::view layerCounts_view,
     const collection_types<short>::const_view& spacepointsLayer_view,
-    const collection_types<int>::view original_sp_idx_view,
+    const collection_types<unsigned int>::view original_sp_idx_view,
     const unsigned int nSp) {
 
     if (globalIndex >= nSp) {
         return;
     }
-
     const collection_types<float4>::const_device reducedSP(reducedSP_view);
     const collection_types<short>::const_device spacepointsLayer(
         spacepointsLayer_view);
-    collection_types<int>::device layerCounts(layerCounts_view);
+    collection_types<unsigned int>::device layerCounts(layerCounts_view);
     collection_types<float4>::device sp_params(sp_params_view);
-    collection_types<int>::device original_sp_idx(original_sp_idx_view);
+    collection_types<unsigned int>::device original_sp_idx(original_sp_idx_view);
 
     const float4 sp = reducedSP[globalIndex];
     if (sp.w < -CHAR_MAX) {
         return;
     }
     const short layerIdx = spacepointsLayer[globalIndex];
-    const unsigned int binedIdx = static_cast<unsigned int>(
-        vecmem::device_atomic_ref<int>(
-            layerCounts[static_cast<unsigned int>(layerIdx)])
-            .fetch_add(-1) -
-        1);
-    original_sp_idx[binedIdx] = static_cast<int>(globalIndex);
+    const unsigned int binedIdx = 
+        vecmem::device_atomic_ref<unsigned int>(layerCounts[layerIdx])
+        .fetch_sub(1) - 1;
+    original_sp_idx[binedIdx] = globalIndex;
     sp_params[binedIdx] = sp;
 }
 

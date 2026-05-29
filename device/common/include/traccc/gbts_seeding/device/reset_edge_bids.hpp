@@ -17,14 +17,35 @@
 
 namespace traccc::device {
 
+/// Mark losing seed proposals against the current edge bids.
+///
+/// Each thread (strided by gridSize) walks proposals in 
+/// d_seed_proposals_view, compares against the winning bid recorded in
+/// d_edge_bids_view, and either updates d_seed_ambiguity_view or
+/// atomically increments nRejectedPropsCounter for losers.  Round -1
+/// is the initialisation pass.
+///
+/// @param[in]  globalIndex                 Current thread index
+/// @param[in]  gridSize                    Total thread count (stride)
+/// @param[in]  d_path_store_view           Per-path (parent, edge) entries
+/// @param[in,out] d_seed_proposals_view    Per-seed (path index, level)
+/// @param[in,out] d_edge_bids_view         Per-edge highest-bidder seed
+/// @param[in,out] d_seed_ambiguity_view    Per-seed ambiguity tag
+/// @param[in]  nProps                      Number of seed proposals
+/// @param[in,out] nRejectedPropsCounter    Global atomic rejected-count
+/// @param[in]  round                       Bidding round index (-1 == init)
+///
 TRACCC_HOST_DEVICE
 inline void reset_edge_bids(
-    global_index_t globalIndex, unsigned int gridSize,
+    const global_index_t globalIndex, 
+    const unsigned int gridSize,
     const collection_types<int2>::const_view& d_path_store_view,
-    collection_types<int2>::view d_seed_proposals_view,
-    collection_types<unsigned long long int>::view d_edge_bids_view,
-    collection_types<char>::view d_seed_ambiguity_view, unsigned int nProps,
-    unsigned int& nRejectedPropsCounter, int round);
+    const collection_types<int2>::view d_seed_proposals_view,
+    const collection_types<unsigned long long int>::view d_edge_bids_view,
+    const collection_types<char>::view d_seed_ambiguity_view, 
+    const unsigned int nProps,
+    unsigned int& nRejectedPropsCounter, 
+    int round);
 
 }  // namespace traccc::device
 

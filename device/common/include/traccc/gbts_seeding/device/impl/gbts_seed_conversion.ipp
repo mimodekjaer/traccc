@@ -18,6 +18,7 @@
 // System include(s).
 #include <array>
 #include <cmath>
+#include <cstdint>
 
 namespace traccc::device {
 
@@ -40,7 +41,7 @@ TRACCC_HOST_DEVICE inline traccc::float2 estimate_params(
     const float sinA = y0 / r0;
 
     for (unsigned int k = 0; k < 2; k++) {
-        const std::size_t sp_idx = (k == 1) ? 2u : k;
+        const unsigned int sp_idx = (k == 1) ? 2u : k;
         const float dx = sps[sp_idx].x - x0;
         const float dy = sps[sp_idx].y - y0;
         const float r2_inv = 1.0f / (dx * dx + dy * dy);
@@ -71,11 +72,12 @@ inline void gbts_seed_conversion(
     const collection_types<int2>::const_view& d_seed_proposals_view,
     const collection_types<char>::const_view& d_seed_ambiguity_view,
     const collection_types<int2>::const_view& d_path_store_view,
-    const collection_types<int>::const_view& d_output_graph_view,
+    const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<float4>::const_view& d_sp_params_view,
-    edm::seed_collection::view output_seeds,
-    collection_types<unsigned long long int>::view d_hit_bids_view,
+    const edm::seed_collection::view& output_seeds,
+    const collection_types<unsigned long long int>::view& d_hit_bids_view,
     const unsigned int nProps, const unsigned int max_num_neighbours,
+    const unsigned int nConnectedEdges,
     const float dcurv_cut_m, const float force_dropout_max_curv_m,
     const float best_hit_frac, const float tight_bid_cot_threshold,
     const bool use_dropout) {
@@ -86,13 +88,13 @@ inline void gbts_seed_conversion(
     const collection_types<char>::const_device d_seed_ambiguity(
         d_seed_ambiguity_view);
     const collection_types<int2>::const_device d_path_store(d_path_store_view);
-    const collection_types<int>::const_device d_output_graph(
+    const collection_types<unsigned int>::const_device d_output_graph(
         d_output_graph_view);
     const collection_types<float4>::const_device d_sp_params(d_sp_params_view);
     collection_types<unsigned long long int>::device d_hit_bids(
         d_hit_bids_view);
 
-    const int edge_size = static_cast<int>(2u + 1u + max_num_neighbours);
+    (void)max_num_neighbours;  // SoA layout: column stride is nConnectedEdges.
     for (unsigned int prop_idx = globalIndex; prop_idx < nProps;
          prop_idx += gridSize) {
 
@@ -106,17 +108,18 @@ inline void gbts_seed_conversion(
         int2 path = make_int2(0, prop.y);
         while (path.y >= 0) {
             path = d_path_store[static_cast<unsigned int>(path.y)];
-            seed.nodes[seed.size++] = static_cast<unsigned int>(
-                d_output_graph[static_cast<unsigned int>(
-                    traccc::device::gbts_consts::node1 +
-                    edge_size * path.x)]);
+            seed.nodes[seed.size++] = d_output_graph[
+                traccc::device::gbts_og_index(
+                    traccc::device::gbts_consts::node1,
+                    static_cast<unsigned int>(path.x), nConnectedEdges)];
             best_for_hit +=
                 (prop_idx ==
                  (d_hit_bids[seed.nodes[seed.size - 1]] & 0xFFFFFFFFLL));
         }
-        seed.nodes[seed.size++] = static_cast<unsigned int>(
-            d_output_graph[static_cast<unsigned int>(
-                traccc::device::gbts_consts::node2 + edge_size * path.x)]);
+        seed.nodes[seed.size++] = d_output_graph[
+            traccc::device::gbts_og_index(
+                traccc::device::gbts_consts::node2,
+                static_cast<unsigned int>(path.x), nConnectedEdges)];
         best_for_hit +=
             (prop_idx ==
              (d_hit_bids[seed.nodes[seed.size - 1]] & 0xFFFFFFFFLL));

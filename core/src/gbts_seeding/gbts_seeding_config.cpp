@@ -18,10 +18,10 @@ namespace traccc {
 // GeoIDBinning pair is detray geo ID and bin index (corrisponding to the
 // layers in layerInfo) minPt in MeV
 bool gbts_seedfinder_config::setLinkingScheme(
-    const std::vector<std::pair<int, std::vector<int>>>& input_binTables,
+    const std::vector<std::pair<unsigned int, std::vector<unsigned int>>>& input_binTables,
     const device::gbts_layerInfo input_layerInfo,
     std::vector<std::pair<uint64_t, short>>& detrayGeoIDBinning,
-    float minPt = 900.0f,
+    const float minPt = 900.0f,
     std::unique_ptr<const traccc::Logger> callers_logger =
         getDummyLogger().clone()) {
 
@@ -29,17 +29,15 @@ bool gbts_seedfinder_config::setLinkingScheme(
     // copy layer-eta binning infomation
     layerInfo = input_layerInfo;
     // unroll binTables
-    for (std::pair<int, std::vector<int>> binPairs : input_binTables) {
-        for (int bin2 : binPairs.second) {
+    for (std::pair<unsigned int, std::vector<unsigned int>> binPairs : input_binTables) {
+        for (unsigned int bin2 : binPairs.second) {
             binTables.push_back(
-                std::make_pair(static_cast<unsigned int>(binPairs.first),
-                               static_cast<unsigned int>(bin2)));
+                std::make_pair(binPairs.first, bin2));
         }
     }
 
-    for (std::pair<int, int> lI : layerInfo.info)
-        n_eta_bins = std::max(n_eta_bins,
-                              static_cast<unsigned int>(lI.first + lI.second));
+    for (std::pair<unsigned int, unsigned int> lI : layerInfo.info)
+        n_eta_bins = std::max(n_eta_bins, lI.first + lI.second);
 
     // bin by volume
     std::ranges::sort(
@@ -60,7 +58,7 @@ bool gbts_seedfinder_config::setLinkingScheme(
     bool layerChange = false;
     short current_layer = detrayGeoIDBinning[0].second;
 
-    int split_volumes = 0;
+    unsigned int split_volumes = 0;
     std::vector<std::pair<short, unsigned int>> volumeToLayerMap_unordered;
     detrayGeoIDBinning.push_back(
         std::make_pair(UINT_MAX, -1));  // end-of-vector element
@@ -105,11 +103,11 @@ bool gbts_seedfinder_config::setLinkingScheme(
         volumeToLayerMap[vLpair.second] = vLpair.first;
     // scale cuts
     float ptScale = 900.0f / minPt;
-    graph_building_params.min_delta_phi *= ptScale;
-    graph_building_params.dphi_coeff *= ptScale;
-    graph_building_params.min_delta_phi_low_dr *= ptScale;
-    graph_building_params.dphi_coeff_low_dr *= ptScale;
-    graph_building_params.max_Kappa *= ptScale;
+    dphi_window.min_delta_phi *= ptScale;
+    dphi_window.dphi_coeff *= ptScale;
+    dphi_window.min_delta_phi_low_dr *= ptScale;
+    dphi_window.dphi_coeff_low_dr *= ptScale;
+    edge_making.max_Kappa *= ptScale;
 
     // contianers sizes
     nLayers = static_cast<unsigned int>(layerInfo.type.size());

@@ -22,9 +22,9 @@ TRACCC_HOST_DEVICE
 inline void reset_edge_bids(
     const global_index_t globalIndex, const unsigned int gridSize,
     const collection_types<int2>::const_view& d_path_store_view,
-    collection_types<int2>::view d_seed_proposals_view,
-    collection_types<unsigned long long int>::view d_edge_bids_view,
-    collection_types<char>::view d_seed_ambiguity_view,
+    const collection_types<int2>::view d_seed_proposals_view,
+    const collection_types<unsigned long long int>::view d_edge_bids_view,
+    const collection_types<char>::view d_seed_ambiguity_view,
     const unsigned int nProps, unsigned int& nRejectedPropsCounter,
     const int round) {
 

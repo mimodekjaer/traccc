@@ -17,12 +17,25 @@
 
 namespace traccc::device {
 
+/// Standalone phi-bin assignment for each node (variant of eta_phi_histo).
+///
+/// One thread per node computes phi from (x, y) and stores the matching
+/// phi-bin index.  Currently provided alongside eta_phi_histo, which
+/// fuses this step with histogram accumulation.
+///
+/// @param[in]  globalIndex                Current thread index
+/// @param[in]  d_sp_params_view           Layer-ordered (x, y, z, r) per SP
+/// @param[out] d_node_phi_index_view      Phi-bin index per node
+/// @param[in]  nNodes                     Number of nodes
+/// @param[in]  nPhiBins                   Number of phi bins per eta slice
+///
 TRACCC_HOST_DEVICE
 inline void node_phi_binning(
-    global_index_t globalIndex,
+    const global_index_t globalIndex,
     const collection_types<float4>::const_view& d_sp_params_view,
-    collection_types<int>::view d_node_phi_index_view, unsigned int nNodes,
-    unsigned int nPhiBins);
+    const collection_types<int>::view d_node_phi_index_view,
+    const unsigned int nNodes,
+    const unsigned int nPhiBins);
 
 }  // namespace traccc::device
 

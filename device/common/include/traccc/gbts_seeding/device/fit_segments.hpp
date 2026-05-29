@@ -16,19 +16,48 @@
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
 #include "traccc/gbts_seeding/gbts_types.hpp"
 
+// System include(s).
+#include <cstdint>
+#include <utility>
+
 namespace traccc::device {
 
+/// Fit each candidate path and emit seed proposals that pass quality cuts.
+///
+/// One thread per path-store entry walks backwards from a leaf, gathers the
+/// involved spacepoints, runs the helix / chi-squared fit, and on success
+/// atomically claims a slot in d_seed_proposals_view, bids for its leaf
+/// edge via d_edge_bids_view, and tags ambiguity.
+///
+/// @param[in]  globalIndex                 Current thread index
+/// @param[in]  d_sp_reduced_view           Reduced (x, y, z, r) per SP
+/// @param[in]  d_output_graph_view         Compact graph
+/// @param[in]  d_path_store_view           Per-path (parent, edge) entries
+/// @param[out] d_seed_proposals_view       (path_store index, level) per seed
+/// @param[in,out] d_edge_bids_view         Per-edge highest-bidder seed
+/// @param[out] d_seed_ambiguity_view       Per-seed ambiguity tag
+/// @param[in]  nPathStoreSize              Upper bound on path indices
+/// @param[in,out] nPropsCounter            Global atomic count of proposals
+/// @param[in]  nTerminusEdges              Number of terminus edges
+/// @param[in]  minLevel                    Minimum required path length
+/// @param[in]  max_num_neighbours          Maximum neighbours per edge
+/// @param[in]  seed_extraction_params      Fit / chi-squared / curvature cuts
+///
 TRACCC_HOST_DEVICE
 inline void fit_segments(
-    global_index_t globalIndex,
+    const global_index_t globalIndex,
     const collection_types<float4>::const_view& d_sp_reduced_view,
-    const collection_types<int>::const_view& d_output_graph_view,
+    const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<int2>::const_view& d_path_store_view,
-    collection_types<int2>::view d_seed_proposals_view,
-    collection_types<unsigned long long int>::view d_edge_bids_view,
-    collection_types<char>::view d_seed_ambiguity_view,
-    unsigned int nPathStoreSize, unsigned int& nPropsCounter,
-    unsigned int nTerminusEdges, int minLevel, unsigned int max_num_neighbours,
+    const collection_types<int2>::view d_seed_proposals_view,
+    const collection_types<unsigned long long int>::view d_edge_bids_view,
+    const collection_types<char>::view d_seed_ambiguity_view,
+    const unsigned int nPathStoreSize,
+    unsigned int& nPropsCounter,
+    const unsigned int nTerminusEdges,
+    const unsigned char minLevel,
+    const unsigned int max_num_neighbours,
+    const unsigned int nConnectedEdges,
     const gbts_seed_extraction_params& seed_extraction_params);
 
 }  // namespace traccc::device
