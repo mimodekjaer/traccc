@@ -67,7 +67,7 @@ TRACCC_HOST_DEVICE inline traccc::float2 estimate_params(
 
 TRACCC_HOST_DEVICE
 inline void gbts_seed_conversion(
-    const global_index_t globalIndex, const unsigned int gridSize,
+    const global_index_t globalIndex,
     const collection_types<int2>::const_view& d_seed_proposals_view,
     const collection_types<char>::const_view& d_seed_ambiguity_view,
     const collection_types<int2>::const_view& d_path_store_view,
@@ -75,10 +75,9 @@ inline void gbts_seed_conversion(
     const collection_types<float4>::const_view& d_sp_params_view,
     const edm::seed_collection::view& output_seeds,
     const collection_types<unsigned long long int>::view& d_hit_bids_view,
-    const unsigned int nProps, const unsigned int max_num_neighbours,
-    const float dcurv_cut_m, const float force_dropout_max_curv_m,
-    const float best_hit_frac, const float tight_bid_cot_threshold,
-    const bool use_dropout) {
+    const unsigned int max_num_neighbours, const float dcurv_cut_m,
+    const float force_dropout_max_curv_m, const float best_hit_frac,
+    const float tight_bid_cot_threshold, const bool use_dropout) {
 
     edm::seed_collection::device seeds_device(output_seeds);
     const collection_types<int2>::const_device d_seed_proposals(
@@ -95,12 +94,12 @@ inline void gbts_seed_conversion(
     // Row-major output graph: each edge owns a contiguous block of
     // edge_size = 2 + 1 + max_num_neighbours ints.
     const unsigned int edge_size = 2u + 1u + max_num_neighbours;
-    for (unsigned int prop_idx = globalIndex; prop_idx < nProps;
-         prop_idx += gridSize) {
 
-        if (d_seed_ambiguity[prop_idx] == -2) {
-            continue;
-        }
+    // One proposal per call; the grid-stride loop lives in the kernel wrapper.
+    const unsigned int prop_idx = globalIndex;
+    if (d_seed_ambiguity[prop_idx] == -2) {
+        return;
+    }
         char best_for_hit = 0;
         gbts_detail::Tracklet seed;
         seed.size = 0;
@@ -122,7 +121,7 @@ inline void gbts_seed_conversion(
                                       0xFFFFFFFFLL));
 
         if (best_for_hit < best_hit_frac * static_cast<float>(seed.size)) {
-            continue;
+            return;
         }
         char diff_code = 0;
         bool force_dropout = false;
@@ -140,7 +139,7 @@ inline void gbts_seed_conversion(
                 (fabsf(curv_cot_1.y + curv_cot_2.y + curv_cot_3.y) <
                  3.0f * tight_bid_cot_threshold) &
                 (seed.size < 5)) {
-                continue;
+                return;
             }
             std::array<float, 3> diff = {fabsf(curv_cot_1.x - curv_cot_2.x),
                                          fabsf(curv_cot_2.x - curv_cot_3.x),
@@ -179,7 +178,6 @@ inline void gbts_seed_conversion(
                                     seed.nodes[(seed.size - 1) / 2],
                                     seed.nodes[0], quality});
         }
-    }
 }
 
 }  // namespace traccc::device

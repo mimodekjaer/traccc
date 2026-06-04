@@ -49,10 +49,9 @@ TRACCC_HOST_DEVICE inline void cca_iteration(
     const unsigned int levelLoad = toggle * nConnectedEdges;
     const unsigned int levelStore = (1 - toggle) * nConnectedEdges;
 
-    if (globalIndex >= nConnectedEdges) {
-        return;
-    }
-
+    // One edge per call; the grid-stride loop over edges lives in the CUDA
+    // kernel wrapper (which is what lets the compiler schedule the scattered
+    // neighbour loads with high memory-level parallelism).
     if (iter != 0) {
         if (d_active_edges[globalIndex] != iter) {
             return;

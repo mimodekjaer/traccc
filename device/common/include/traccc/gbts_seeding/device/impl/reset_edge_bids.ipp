@@ -20,12 +20,12 @@ namespace traccc::device {
 
 TRACCC_HOST_DEVICE
 inline void reset_edge_bids(
-    const global_index_t globalIndex, const unsigned int gridSize,
+    const global_index_t globalIndex,
     const collection_types<int2>::const_view& d_path_store_view,
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
     const collection_types<char>::view d_seed_ambiguity_view,
-    const unsigned int nProps, unsigned int& nRejectedPropsCounter) {
+    unsigned int& nRejectedPropsCounter) {
 
     const collection_types<int2>::const_device d_path_store(d_path_store_view);
     collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
@@ -33,39 +33,37 @@ inline void reset_edge_bids(
         d_edge_bids_view);
     collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
 
-    // first round find best seed starting at each edge
-    for (unsigned int prop_idx = globalIndex; prop_idx < nProps;
-         prop_idx += gridSize) {
+    // One proposal per call; the grid-stride loop lives in the kernel wrapper.
+    const unsigned int prop_idx = globalIndex;
 
-        const char ambi = d_seed_ambiguity[prop_idx];
-        if ((ambi == -2) | (ambi == 0)) {
-            // only reset maybes
-            continue;
-        }
-        const int2 prop = d_seed_proposals[prop_idx];
+    const char ambi = d_seed_ambiguity[prop_idx];
+    if ((ambi == -2) | (ambi == 0)) {
+        // only reset maybes
+        return;
+    }
+    const int2 prop = d_seed_proposals[prop_idx];
 
-        bool isgood = true;
-        // dummy path to start the loop
-        int2 path = make_int2(0, prop.y);
-        while (path.y >= 0) {
-            path = d_path_store[static_cast<unsigned int>(path.y)];
-            const unsigned long long int best_bid =
-                d_edge_bids[static_cast<unsigned int>(path.x)];
-            if (d_seed_ambiguity[static_cast<unsigned int>(
-                    best_bid & 0xFFFFFFFFLL)] == 0) {
-                isgood = false;
-                break;
-            }
+    bool isgood = true;
+    // dummy path to start the loop
+    int2 path = make_int2(0, prop.y);
+    while (path.y >= 0) {
+        path = d_path_store[static_cast<unsigned int>(path.y)];
+        const unsigned long long int best_bid =
+            d_edge_bids[static_cast<unsigned int>(path.x)];
+        if (d_seed_ambiguity[static_cast<unsigned int>(best_bid &
+                                                       0xFFFFFFFFLL)] == 0) {
+            isgood = false;
+            break;
         }
-        if (isgood) {
-            // flag as maybe seed, shares with a loser
-            d_seed_ambiguity[prop_idx] = 1;
-        } else {
-            // definite fake, shares with a winner
-            d_seed_ambiguity[prop_idx] = -2;
-            vecmem::device_atomic_ref<unsigned int>(nRejectedPropsCounter)
-                .fetch_add(1u);
-        }
+    }
+    if (isgood) {
+        // flag as maybe seed, shares with a loser
+        d_seed_ambiguity[prop_idx] = 1;
+    } else {
+        // definite fake, shares with a winner
+        d_seed_ambiguity[prop_idx] = -2;
+        vecmem::device_atomic_ref<unsigned int>(nRejectedPropsCounter)
+            .fetch_add(1u);
     }
 }
 

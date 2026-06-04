@@ -28,7 +28,7 @@ namespace traccc::device {
 /// into the opposite ping-pong buffer (selected by iter parity).  The
 /// final block to finish records the longest outgoing path summary per edge.
 ///
-/// @param[in]  globalIndex               Current thread index (one per edge)
+/// @param[in]  globalIndex               Edge index processed by this call
 /// @param[in]  d_output_graph_view       Compact graph from graph_compression
 /// @param[in,out] d_levels_view          Per-edge level ping-pong
 /// @param[in,out] d_active_edges_view    Per-iteration active-edge list

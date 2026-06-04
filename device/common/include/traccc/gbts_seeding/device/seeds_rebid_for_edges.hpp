@@ -20,29 +20,28 @@
 
 namespace traccc::device {
 
-/// Have each surviving seed re-bid for every edge along its path.
+/// Have one surviving seed re-bid for every edge along its path.
 ///
-/// Each thread (strided by gridSize) walks one accepted proposal, then
-/// for every edge on its path-store chain atomically compares its packed bid
+/// Processes one proposal (the grid-stride loop lives in the kernel wrapper):
+/// for every edge on its path-store chain it atomically compares its packed bid
 /// against d_edge_bids_view and replaces the entry if the new bid wins.
 ///
-/// @param[in]  globalIndex                 Current thread index
-/// @param[in]  gridSize                    Total thread count (stride)
+/// @param[in]  globalIndex                 Proposal index processed by this call
 /// @param[in]  d_path_store_view           Per-path (parent, edge) entries
 /// @param[in]  d_seed_proposals_view       Per-seed (path index, level)
 /// @param[in,out] d_edge_bids_view         Per-edge highest-bidder seed
 /// @param[in]  d_seed_ambiguity_view       Per-seed ambiguity tag
-/// @param[in]  nProps                      Number of seed proposals
+/// @param[in,out] nRejectedPropsCounter    Global atomic rejected-count
+/// @param[in]  first_round                 True on the first bidding round
 ///
 TRACCC_HOST_DEVICE
 inline void seeds_rebid_for_edges(
-    const global_index_t globalIndex, const unsigned int gridSize,
+    const global_index_t globalIndex,
     const collection_types<int2>::const_view& d_path_store_view,
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
     const collection_types<char>::view d_seed_ambiguity_view,
-    const unsigned int nProps, unsigned int& nRejectedPropsCounter,
-    const bool first_round);
+    unsigned int& nRejectedPropsCounter, const bool first_round);
 
 }  // namespace traccc::device
 

@@ -239,9 +239,12 @@ __global__ void cca_iteration(
     const unsigned char iter, const unsigned int nConnectedEdges,
     const unsigned int max_num_neighbours, const unsigned char minLevel) {
 
-    device::cca_iteration(details::global_index1(), output_graph, levels,
-                          active_edges, outgoing_paths, iter, nConnectedEdges,
-                          max_num_neighbours, minLevel);
+    for (unsigned int edge = details::global_index1(); edge < nConnectedEdges;
+         edge += blockDim.x * gridDim.x) {
+        device::cca_iteration(edge, output_graph, levels, active_edges,
+                              outgoing_paths, iter, nConnectedEdges,
+                              max_num_neighbours, minLevel);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::count_terminus_edges
@@ -313,9 +316,11 @@ __global__ void reset_edge_bids(
     const collection_types<char>::view seed_ambiguity,
     const unsigned int nProps, unsigned int* nRejectedPropsCounter) {
 
-    device::reset_edge_bids(details::global_index1(), blockDim.x * gridDim.x,
-                            path_store, seed_proposals, edge_bids,
-                            seed_ambiguity, nProps, *nRejectedPropsCounter);
+    for (unsigned int idx = details::global_index1(); idx < nProps;
+         idx += blockDim.x * gridDim.x) {
+        device::reset_edge_bids(idx, path_store, seed_proposals, edge_bids,
+                                seed_ambiguity, *nRejectedPropsCounter);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::seeds_rebid_for_edges
@@ -327,10 +332,12 @@ __global__ void seeds_rebid_for_edges(
     const unsigned int nProps, unsigned int* nRejectedPropsCounter,
     const bool first_round) {
 
-    device::seeds_rebid_for_edges(details::global_index1(),
-                                  blockDim.x * gridDim.x, path_store,
-                                  seed_proposals, edge_bids, seed_ambiguity,
-                                  nProps, *nRejectedPropsCounter, first_round);
+    for (unsigned int idx = details::global_index1(); idx < nProps;
+         idx += blockDim.x * gridDim.x) {
+        device::seeds_rebid_for_edges(idx, path_store, seed_proposals, edge_bids,
+                                      seed_ambiguity, *nRejectedPropsCounter,
+                                      first_round);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::seeds_bid_for_hits
@@ -342,9 +349,11 @@ __global__ void seeds_bid_for_hits(
     const collection_types<unsigned long long int>::view hit_bids,
     const unsigned int nProps, const unsigned int edge_size) {
 
-    device::seeds_bid_for_hits(details::global_index1(), blockDim.x * gridDim.x,
-                               output_graph, seed_proposals, path_store,
-                               seed_ambiguity, hit_bids, nProps, edge_size);
+    for (unsigned int idx = details::global_index1(); idx < nProps;
+         idx += blockDim.x * gridDim.x) {
+        device::seeds_bid_for_hits(idx, output_graph, seed_proposals, path_store,
+                                   seed_ambiguity, hit_bids, edge_size);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::gbts_seed_conversion
@@ -361,12 +370,14 @@ __global__ void gbts_seed_conversion(
     const float best_hit_frac, const float tight_bid_cot_threshold,
     const bool use_dropout) {
 
-    device::gbts_seed_conversion(
-        details::global_index1(), blockDim.x * gridDim.x, seed_proposals,
-        seed_ambiguity, path_store, output_graph, sp_params, output_seeds,
-        hit_bids, nProps, max_num_neighbours, dcurv_cut_m,
-        force_dropout_max_curv_m, best_hit_frac, tight_bid_cot_threshold,
-        use_dropout);
+    for (unsigned int idx = details::global_index1(); idx < nProps;
+         idx += blockDim.x * gridDim.x) {
+        device::gbts_seed_conversion(
+            idx, seed_proposals, seed_ambiguity, path_store, output_graph,
+            sp_params, output_seeds, hit_bids, max_num_neighbours, dcurv_cut_m,
+            force_dropout_max_curv_m, best_hit_frac, tight_bid_cot_threshold,
+            use_dropout);
+    }
 }
 
 }  // namespace kernels

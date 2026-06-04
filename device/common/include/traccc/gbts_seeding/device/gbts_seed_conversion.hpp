@@ -25,8 +25,7 @@ namespace traccc::device {
 /// dropout / curvature / hit-fraction cuts, and appends a seed to the output
 /// resizable buffer on success.
 ///
-/// @param[in]  globalIndex                 Current thread index
-/// @param[in]  gridSize                    Total thread count (stride)
+/// @param[in]  globalIndex                 Proposal index processed by this call
 /// @param[in]  d_seed_proposals_view       Per-seed (path index, level)
 /// @param[in]  d_seed_ambiguity_view       Per-seed ambiguity tag
 /// @param[in]  d_path_store_view           Per-path (parent, edge) entries
@@ -34,7 +33,6 @@ namespace traccc::device {
 /// @param[in]  d_sp_params_view            Layer-ordered (x, y, z, r) per SP
 /// @param[out] output_seeds                Appended 3-SP edm::seed records
 /// @param[in]  d_hit_bids_view             Per-hit highest-bidder seed
-/// @param[in]  nProps                      Number of seed proposals
 /// @param[in]  max_num_neighbours          Maximum neighbours per edge
 /// @param[in]  dcurv_cut_m                 Curvature-difference dropout cut
 /// @param[in]  force_dropout_max_curv_m    Hard curvature cutoff for dropout
@@ -44,7 +42,7 @@ namespace traccc::device {
 ///
 TRACCC_HOST_DEVICE
 inline void gbts_seed_conversion(
-    const global_index_t globalIndex, const unsigned int gridSize,
+    const global_index_t globalIndex,
     const collection_types<int2>::const_view& d_seed_proposals_view,
     const collection_types<char>::const_view& d_seed_ambiguity_view,
     const collection_types<int2>::const_view& d_path_store_view,
@@ -52,10 +50,9 @@ inline void gbts_seed_conversion(
     const collection_types<float4>::const_view& d_sp_params_view,
     const edm::seed_collection::view& output_seeds,
     const collection_types<unsigned long long int>::view& d_hit_bids_view,
-    const unsigned int nProps, const unsigned int max_num_neighbours,
-    const float dcurv_cut_m, const float force_dropout_max_curv_m,
-    const float best_hit_frac, const float tight_bid_cot_threshold,
-    const bool use_dropout);
+    const unsigned int max_num_neighbours, const float dcurv_cut_m,
+    const float force_dropout_max_curv_m, const float best_hit_frac,
+    const float tight_bid_cot_threshold, const bool use_dropout);
 
 }  // namespace traccc::device
 

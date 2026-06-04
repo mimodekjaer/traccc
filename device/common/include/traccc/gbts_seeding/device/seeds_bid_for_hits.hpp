@@ -20,33 +20,31 @@
 
 namespace traccc::device {
 
-/// Each accepted seed bids on its constituent hits.
+/// One accepted seed bids on its constituent hits.
 ///
-/// Each thread (strided by gridSize) takes one accepted proposal, walks
-/// the seed's edges via the compact graph to enumerate hit indices, and
-/// atomically updates d_hit_bids_view with its packed seed bid if it
-/// outranks the current best for that hit.
+/// Processes one proposal (the grid-stride loop lives in the kernel wrapper):
+/// walks the seed's edges via the compact graph to enumerate hit indices, and
+/// atomically updates d_hit_bids_view with its packed seed bid if it outranks
+/// the current best for that hit.
 ///
-/// @param[in]  globalIndex                 Current thread index
-/// @param[in]  gridSize                    Total thread count (stride)
+/// @param[in]  globalIndex                 Proposal index processed by this call
 /// @param[in]  d_output_graph_view         Compact graph from graph_compression
 /// @param[in]  d_seed_proposals_view       Per-seed (path index, level)
 /// @param[in]  d_path_store_view           Per-path (parent, edge) entries
 /// @param[in]  d_seed_ambiguity_view       Per-seed ambiguity tag
 /// @param[in,out] d_hit_bids_view          Per-hit highest-bidder seed
-/// @param[in]  nProps                      Number of seed proposals
 /// @param[in]  edge_size                   Stride in d_output_graph_view
 ///                                         for one edge record
 ///
 TRACCC_HOST_DEVICE
 inline void seeds_bid_for_hits(
-    const global_index_t globalIndex, const unsigned int gridSize,
+    const global_index_t globalIndex,
     const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<int2>::const_view& d_seed_proposals_view,
     const collection_types<int2>::const_view& d_path_store_view,
     const collection_types<char>::const_view& d_seed_ambiguity_view,
     const collection_types<unsigned long long int>::view d_hit_bids_view,
-    const unsigned int nProps, const unsigned int edge_size);
+    const unsigned int edge_size);
 
 }  // namespace traccc::device
 
