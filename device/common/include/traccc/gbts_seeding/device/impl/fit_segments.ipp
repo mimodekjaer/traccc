@@ -46,8 +46,9 @@ struct edgeState {
         return Cy[i + j];
     }
 
-    TRACCC_HOST_DEVICE inline void initialize(const traccc::float4& node1_params,
-                                              const traccc::float4& node2_params) {
+    TRACCC_HOST_DEVICE inline void initialize(
+        const traccc::float4& node1_params,
+        const traccc::float4& node2_params) {
         m_J = 0.0f;
         m_head_node_type = (node1_params.w < 0);
 
@@ -93,8 +94,7 @@ struct edgeState {
 };
 
 TRACCC_HOST_DEVICE inline bool kf_update(
-    edgeState* new_ts, const edgeState* ts,
-    const traccc::float4& node1_params,
+    edgeState* new_ts, const edgeState* ts, const traccc::float4& node1_params,
     const gbts_seed_extraction_params& KF_params) {
 
     const float tau2 = ts->m_Y[1] * ts->m_Y[1];
@@ -128,8 +128,7 @@ TRACCC_HOST_DEVICE inline bool kf_update(
 
     new_ts->m_Cx(0, 0) = ts->m_Cx(0, 0) + 2 * ts->m_Cx(0, 1) * A +
                          2 * ts->m_Cx(0, 2) * B + A * m_Cx11 * A +
-                         2 * A * ts->m_Cx(1, 2) * B +
-                         B * ts->m_Cx(2, 2) * B;
+                         2 * A * ts->m_Cx(1, 2) * B + B * ts->m_Cx(2, 2) * B;
     new_ts->m_Cx(0, 1) = ts->m_Cx(0, 1) + m_Cx11 * A + ts->m_Cx(1, 2) * B +
                          ts->m_Cx(0, 2) * A + A * ts->m_Cx(1, 2) * A +
                          A * ts->m_Cx(2, 2) * B;
@@ -169,8 +168,7 @@ TRACCC_HOST_DEVICE inline bool kf_update(
         return false;
     }
 
-    new_ts->m_J = ts->m_J + (KF_params.add_hit -
-                             dchi2_x * KF_params.weight_x -
+    new_ts->m_J = ts->m_J + (KF_params.add_hit - dchi2_x * KF_params.weight_x -
                              dchi2_y * KF_params.weight_y);
 
     for (unsigned int i = 0u; i < 3u; i++) {
@@ -262,9 +260,10 @@ inline void fit_segments(
     state1.initialize(node2, node1);
     while (path.y >= 0) {
         path = d_path_store[static_cast<unsigned int>(path.y)];
-        node2 = d_sp_reduced[d_output_graph[
-            edge_size * static_cast<unsigned int>(path.x) +
-            gbts_consts::node2]];
+        node2 =
+            d_sp_reduced[d_output_graph[edge_size *
+                                            static_cast<unsigned int>(path.x) +
+                                        gbts_consts::node2]];
         if (toggle) {
             if (!gbts_detail::kf_update(&state1, &state2, node2,
                                         seed_extraction_params)) {
@@ -288,10 +287,8 @@ inline void fit_segments(
         qual = static_cast<int>(seed_extraction_params.qual_scale * state1.m_J);
     }
     const unsigned int prop_idx =
-        vecmem::device_atomic_ref<unsigned int>(nPropsCounter)
-            .fetch_add(1u);
-    add_seed_proposal(qual, static_cast<int>(path_idx),
-                      prop_idx,
+        vecmem::device_atomic_ref<unsigned int>(nPropsCounter).fetch_add(1u);
+    add_seed_proposal(qual, static_cast<int>(path_idx), prop_idx,
                       d_seed_ambiguity_view, d_seed_proposals_view,
                       d_edge_bids_view, d_path_store_view, 1);
 }

@@ -30,9 +30,9 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
     collection_types<int2>::view d_path_store_view,
     const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<unsigned char>::const_view& d_levels_view,
-    unsigned int& nPathStoreSizeCounter,
-    const unsigned int nTerminus, const unsigned int nTerminusPerBlock,
-    const unsigned int max_num_neighbours, const unsigned int nReachablePaths) {
+    unsigned int& nPathStoreSizeCounter, const unsigned int nTerminus,
+    const unsigned int nTerminusPerBlock, const unsigned int max_num_neighbours,
+    const unsigned int nReachablePaths) {
 
     const unsigned int threadIndex = thread_id.getLocalThreadIdX();
     const unsigned int blockIndex = thread_id.getBlockIdX();
@@ -65,18 +65,18 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
             if (level != d_levels[static_cast<unsigned int>(edge_idx)] + 1) {
                 continue;
             }
-            const unsigned int live_idx =
-                static_cast<unsigned int>(
-                    vecmem::device_atomic_ref<int>(n_live_paths).fetch_add(1));
+            const unsigned int live_idx = static_cast<unsigned int>(
+                vecmem::device_atomic_ref<int>(n_live_paths).fetch_add(1));
             if (live_idx >=
-                static_cast<unsigned int>(traccc::device::gbts_consts::live_path_buffer)) {
+                static_cast<unsigned int>(
+                    traccc::device::gbts_consts::live_path_buffer)) {
                 break;
             }
             const unsigned int new_path_idx =
                 vecmem::device_atomic_ref<unsigned int>(nPathStoreSizeCounter)
                     .fetch_add(1u);
-            d_path_store[new_path_idx] =
-                make_int2(static_cast<int>(edge_idx), static_cast<int>(path_idx));
+            d_path_store[new_path_idx] = make_int2(static_cast<int>(edge_idx),
+                                                   static_cast<int>(path_idx));
             live_paths[static_cast<unsigned int>(live_idx)] =
                 make_uint2(edge_idx, new_path_idx);
         }
@@ -89,8 +89,8 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
     while (n_live_paths > 0) {
         has_path = false;
         if (threadIndex == 0) {
-            const int buf_size = static_cast<int>(
-                traccc::device::gbts_consts::live_path_buffer);
+            const int buf_size =
+                static_cast<int>(traccc::device::gbts_consts::live_path_buffer);
             n_live_paths = (n_live_paths < buf_size) ? n_live_paths : buf_size;
         }
         barrier.blockBarrier();
@@ -117,21 +117,21 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
                 if (level != d_levels[edge_idx] + 1) {
                     continue;
                 }
-                path_idx =
-                    vecmem::device_atomic_ref<unsigned int>(
-                        nPathStoreSizeCounter)
-                        .fetch_add(1u);
+                path_idx = vecmem::device_atomic_ref<unsigned int>(
+                               nPathStoreSizeCounter)
+                               .fetch_add(1u);
                 if (path_idx >= nReachablePaths) {
                     break;
                 }
                 const int live_idx =
                     vecmem::device_atomic_ref<int>(n_live_paths).fetch_add(1);
-                if (live_idx >= static_cast<int>(
-                                    traccc::device::gbts_consts::live_path_buffer)) {
+                if (live_idx >=
+                    static_cast<int>(
+                        traccc::device::gbts_consts::live_path_buffer)) {
                     break;
                 }
-                d_path_store[path_idx] = make_int2(
-                    static_cast<int>(edge_idx), static_cast<int>(path.y));
+                d_path_store[path_idx] = make_int2(static_cast<int>(edge_idx),
+                                                   static_cast<int>(path.y));
                 live_paths[static_cast<unsigned int>(live_idx)] =
                     make_uint2(edge_idx, path_idx);
             }

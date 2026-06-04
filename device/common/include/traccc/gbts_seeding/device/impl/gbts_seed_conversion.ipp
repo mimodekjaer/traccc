@@ -58,9 +58,8 @@ TRACCC_HOST_DEVICE inline traccc::float2 estimate_params(
     const float A = (v[0] - v[1]) / du;
     const float B = v[1] - A * u[1];
     const float curv = 1000.0f * B / sqrtf(1 + A * A);
-    const float cot_t =
-        (sps[2].z - sps[1].z) /
-        (sqrtf(sps[2].x * sps[2].x + sps[2].y * sps[2].y) - r0);
+    const float cot_t = (sps[2].z - sps[1].z) /
+                        (sqrtf(sps[2].x * sps[2].x + sps[2].y * sps[2].y) - r0);
     return make_float2(curv, cot_t);
 }
 
@@ -119,9 +118,8 @@ inline void gbts_seed_conversion(
         seed.nodes[seed.size++] =
             d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
                            gbts_consts::node2];
-        best_for_hit +=
-            (prop_idx ==
-             (d_hit_bids[seed.nodes[seed.size - 1]] & 0xFFFFFFFFLL));
+        best_for_hit += (prop_idx == (d_hit_bids[seed.nodes[seed.size - 1]] &
+                                      0xFFFFFFFFLL));
 
         if (best_for_hit < best_hit_frac * static_cast<float>(seed.size)) {
             continue;
@@ -133,14 +131,11 @@ inline void gbts_seed_conversion(
                 d_sp_params[seed.nodes[seed.size - 1]],
                 d_sp_params[seed.nodes[(seed.size - 1) / 2 + 1]],
                 d_sp_params[seed.nodes[0]]};
-            const traccc::float2 curv_cot_1 =
-                gbts_detail::estimate_params(sps);
+            const traccc::float2 curv_cot_1 = gbts_detail::estimate_params(sps);
             sps[1] = d_sp_params[seed.nodes[(seed.size - 1) / 2]];
-            const traccc::float2 curv_cot_2 =
-                gbts_detail::estimate_params(sps);
+            const traccc::float2 curv_cot_2 = gbts_detail::estimate_params(sps);
             sps[0] = d_sp_params[seed.nodes[seed.size - 2]];
-            const traccc::float2 curv_cot_3 =
-                gbts_detail::estimate_params(sps);
+            const traccc::float2 curv_cot_3 = gbts_detail::estimate_params(sps);
             if ((best_for_hit < seed.size - 1) &
                 (fabsf(curv_cot_1.y + curv_cot_2.y + curv_cot_3.y) <
                  3.0f * tight_bid_cot_threshold) &
@@ -150,13 +145,11 @@ inline void gbts_seed_conversion(
             std::array<float, 3> diff = {fabsf(curv_cot_1.x - curv_cot_2.x),
                                          fabsf(curv_cot_2.x - curv_cot_3.x),
                                          fabsf(curv_cot_1.x - curv_cot_3.x)};
-            diff_code =
-                static_cast<char>(4 * (diff[0] < dcurv_cut_m) +
-                                  2 * (diff[1] < dcurv_cut_m) +
-                                  (diff[2] < dcurv_cut_m));
-            force_dropout =
-                fabsf(curv_cot_1.x + curv_cot_2.x + curv_cot_3.x) <
-                3.0f * force_dropout_max_curv_m;
+            diff_code = static_cast<char>(4 * (diff[0] < dcurv_cut_m) +
+                                          2 * (diff[1] < dcurv_cut_m) +
+                                          (diff[2] < dcurv_cut_m));
+            force_dropout = fabsf(curv_cot_1.x + curv_cot_2.x + curv_cot_3.x) <
+                            3.0f * force_dropout_max_curv_m;
             force_dropout |=
                 (fabsf(curv_cot_1.y + curv_cot_2.y + curv_cot_3.y) <
                  3.0f * tight_bid_cot_threshold) &

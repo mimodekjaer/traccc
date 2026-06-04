@@ -25,7 +25,8 @@ namespace traccc::device {
 ///
 /// @param[in]  globalIndex                  Global thread index (one per edge)
 /// @param[in]  d_graph_matching_params      Pair-matching cuts
-/// @param[in]  d_edge_params_view           Per-edge [exp_eta, curv, phi_z, phi_w]
+/// @param[in]  d_edge_params_view           Per-edge [exp_eta, curv, phi_z,
+/// phi_w]
 /// @param[in]  d_edge_nodes_view            (src, dst) per edge
 /// @param[in]  d_num_outgoing_edges_view    Per-node prefix sum (now offsets)
 /// @param[in]  d_edge_links_view            Per-edge slot in its node's list

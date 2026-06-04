@@ -71,8 +71,7 @@ inline void node_sorting(
             // LUT is laid out as [w_bin_edge, min_tau, max_tau, ...] per bin.
             const int tau_bin =
                 5 * static_cast<int>(floorf(ap.tau_lut_inv_bin * sp.w) - 1.0f);
-            if (tau_bin > -1 &&
-                tau_bin < static_cast<int>(ap.tauLutSize)) {
+            if (tau_bin > -1 && tau_bin < static_cast<int>(ap.tauLutSize)) {
                 min_tau = d_tau_lut[static_cast<unsigned int>(tau_bin) + 1u];
                 max_tau = d_tau_lut[static_cast<unsigned int>(tau_bin) + 2u];
             }
@@ -91,12 +90,11 @@ inline void node_sorting(
     }
 
     const unsigned int eta_index = d_node_eta_index[globalIndex];
-    const unsigned int histo_bin = d_node_phi_index[globalIndex] +
-                                   nPhiBins * eta_index;
+    const unsigned int histo_bin =
+        d_node_phi_index[globalIndex] + nPhiBins * eta_index;
 
     const unsigned int pos =
-        vecmem::device_atomic_ref<unsigned int>(
-            d_phi_cusums[histo_bin])
+        vecmem::device_atomic_ref<unsigned int>(d_phi_cusums[histo_bin])
             .fetch_add(1);
 
     d_node_params[pos] = make_float4(min_tau, max_tau, r, z);

@@ -36,8 +36,7 @@ inline void edge_re_indexing(const global_index_t globalIndex,
         return;
     }
     d_reIndexer[globalIndex] = static_cast<int>(
-        vecmem::device_atomic_ref<unsigned int>(nConnectedEdges)
-            .fetch_add(1u));
+        vecmem::device_atomic_ref<unsigned int>(nConnectedEdges).fetch_add(1u));
 }
 
 }  // namespace traccc::device

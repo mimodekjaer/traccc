@@ -94,7 +94,7 @@ __global__ static void CCA_IterationKernel(const int* d_output_graph,
 
         bool localChange = false;
         // loop over neighbouring edges
-        for (int nIdx = 0; nIdx < nNei; nIdx++) { 
+        for (int nIdx = 0; nIdx < nNei; nIdx++) {
 
             int nextEdgeIdx =
                 d_output_graph[edge_pos +

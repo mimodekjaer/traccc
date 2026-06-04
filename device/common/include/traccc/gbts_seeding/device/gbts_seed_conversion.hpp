@@ -44,8 +44,7 @@ namespace traccc::device {
 ///
 TRACCC_HOST_DEVICE
 inline void gbts_seed_conversion(
-    const global_index_t globalIndex, 
-    const unsigned int gridSize,
+    const global_index_t globalIndex, const unsigned int gridSize,
     const collection_types<int2>::const_view& d_seed_proposals_view,
     const collection_types<char>::const_view& d_seed_ambiguity_view,
     const collection_types<int2>::const_view& d_path_store_view,
@@ -53,12 +52,9 @@ inline void gbts_seed_conversion(
     const collection_types<float4>::const_view& d_sp_params_view,
     const edm::seed_collection::view& output_seeds,
     const collection_types<unsigned long long int>::view& d_hit_bids_view,
-    const unsigned int nProps,
-    const unsigned int max_num_neighbours,
-    const float dcurv_cut_m,
-    const float force_dropout_max_curv_m,
-    const float best_hit_frac,
-    const float tight_bid_cot_threshold,
+    const unsigned int nProps, const unsigned int max_num_neighbours,
+    const float dcurv_cut_m, const float force_dropout_max_curv_m,
+    const float best_hit_frac, const float tight_bid_cot_threshold,
     const bool use_dropout);
 
 }  // namespace traccc::device

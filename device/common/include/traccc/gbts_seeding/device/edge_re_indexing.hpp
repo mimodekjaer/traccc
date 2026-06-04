@@ -28,9 +28,10 @@ namespace traccc::device {
 /// @param[in]  nEdges                 Number of original edges
 ///
 TRACCC_HOST_DEVICE
-inline void edge_re_indexing(
-    const global_index_t globalIndex, const collection_types<int>::view d_reIndexer_view,
-    unsigned int& nConnectedEdges, const unsigned int nEdges);
+inline void edge_re_indexing(const global_index_t globalIndex,
+                             const collection_types<int>::view d_reIndexer_view,
+                             unsigned int& nConnectedEdges,
+                             const unsigned int nEdges);
 
 }  // namespace traccc::device
 

@@ -22,10 +22,10 @@
 
 namespace traccc::device {
 
-// For each edge, find up to nMaxNei compatible neighbour edges sharing its outer
-// node, recording them and marking both edges as "kept". The edge parameters are
-// read from the packed gbts_edge4 buffer ([exp_eta, curv, phi_z, phi_w]) and the
-// cuts are evaluated in float.
+// For each edge, find up to nMaxNei compatible neighbour edges sharing its
+// outer node, recording them and marking both edges as "kept". The edge
+// parameters are read from the packed gbts_edge4 buffer ([exp_eta, curv, phi_z,
+// phi_w]) and the cuts are evaluated in float.
 TRACCC_HOST_DEVICE inline void graph_edge_matching(
     const global_index_t globalIndex,
     const gbts_edge_matching_params& d_graph_matching_params,
@@ -63,8 +63,8 @@ TRACCC_HOST_DEVICE inline void graph_edge_matching(
 
     const unsigned int link_begin = d_num_outgoing_edges[sharedNode];
     // the number of edges leaving the sharedNode
-    const unsigned int nLinks = d_num_outgoing_edges[sharedNode + 1u] -
-                                link_begin;
+    const unsigned int nLinks =
+        d_num_outgoing_edges[sharedNode + 1u] - link_begin;
     if (nLinks == 0u) {
         return;
     }
@@ -79,7 +79,8 @@ TRACCC_HOST_DEVICE inline void graph_edge_matching(
 
     unsigned char num_nei = 0;
 
-    for (unsigned int k = 0u; k < nLinks; k++) {  // loop over potential neighbours
+    for (unsigned int k = 0u; k < nLinks;
+         k++) {  // loop over potential neighbours
 
         if (num_nei >= nMaxNei) {
             break;

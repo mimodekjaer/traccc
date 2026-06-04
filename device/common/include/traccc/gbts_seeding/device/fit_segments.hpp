@@ -52,10 +52,8 @@ inline void fit_segments(
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
     const collection_types<char>::view d_seed_ambiguity_view,
-    const unsigned int nPathStoreSize,
-    unsigned int& nPropsCounter,
-    const unsigned int nTerminusEdges,
-    const unsigned char minLevel,
+    const unsigned int nPathStoreSize, unsigned int& nPropsCounter,
+    const unsigned int nTerminusEdges, const unsigned char minLevel,
     const unsigned int max_num_neighbours,
     const gbts_seed_extraction_params& seed_extraction_params);
 

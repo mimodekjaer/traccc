@@ -27,8 +27,8 @@ namespace gbts_detail {
 
 // Apply the RZ-doublet + curvature/d0 cuts to a candidate edge (node1->node2)
 // and, if it passes, append it to the edge list. Single-use helper for
-// graph_edge_making, kept inline here. Node params are float4 (tau_min, tau_max,
-// r, z).
+// graph_edge_making, kept inline here. Node params are float4 (tau_min,
+// tau_max, r, z).
 template <typename edge_nodes_t, typename edge_params_t, typename counts_t>
 TRACCC_HOST_DEVICE inline void gbts_checks(
     const float4 node_params_1, const float4 node_params_2,
@@ -94,7 +94,7 @@ TRACCC_HOST_DEVICE inline void gbts_checks(
         d_edge_nodes[nEdges] = make_uint2(globalIdx2, begin_bin1 + n1Idx);
         d_edge_params[nEdges] =
             gbts_make_edge4(exp_eta, curv, phi2 + curv * r2, phi1 + curv * r1);
-            //edge params: (exp_eta, curvature, phi at node2, phi at node1)
+        // edge params: (exp_eta, curvature, phi at node2, phi at node1)
     }
 }
 
@@ -153,7 +153,8 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
     const float phiN = phi[num_nodes1 - 1u];
     const float phi_bin_width =
         traccc::device::TWO_PI_F / static_cast<float>(nPhiBins);
-    const float break_threshold = deltaPhi + phi_bin_width - traccc::device::PI_F;
+    const float break_threshold =
+        deltaPhi + phi_bin_width - traccc::device::PI_F;
 
     unsigned int last_n1 = 0u;  // initial value for the sliding window
 

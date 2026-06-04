@@ -52,8 +52,7 @@ inline void count_sp_by_layer(
     const collection_types<float4>::view reducedSP_view,
     const collection_types<unsigned int>::view layerCounts_view,
     const collection_types<unsigned short>::view spacepointsLayer_view,
-    const unsigned int nSp,
-    const gbts_sp_counting_params sp_counting_params);
+    const unsigned int nSp, const gbts_sp_counting_params sp_counting_params);
 
 }  // namespace traccc::device
 

@@ -20,8 +20,8 @@
 // vectorised loads. Every other backend (SYCL, Alpaka, plain host) uses the
 // portable struct fallback below; their native `vec` types use a different
 // element-access API, so the struct keeps the shared kernel `.ipp` code
-// compiling unchanged. The fallback keeps the exact alignment of the builtins so
-// the types are layout-identical across translation units.
+// compiling unchanged. The fallback keeps the exact alignment of the builtins
+// so the types are layout-identical across translation units.
 #if defined(__CUDACC__) || defined(__HIP__)
 #define TRACCC_GBTS_USE_BUILTIN_VECTORS 1
 #include <vector_functions.h>

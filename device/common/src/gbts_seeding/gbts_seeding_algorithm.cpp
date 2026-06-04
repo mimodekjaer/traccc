@@ -164,8 +164,8 @@ auto gbts_seeding_algorithm::make_nodes(
         eta_bin_views[pos + 1] = eta_sums[view_idx];
     }
 
-    eta_phi_prefix_sum_kernel({cfg.n_eta_bins, cfg.n_phi_bins,
-                               eta_node_counter_buf, phi_cusums_buf});
+    eta_phi_prefix_sum_kernel(
+        {cfg.n_eta_bins, cfg.n_phi_bins, eta_node_counter_buf, phi_cusums_buf});
 
     collection_types<float4>::buffer node_params_buf(nNodes, mr().main);
     copy().setup(node_params_buf)->ignore();
@@ -198,8 +198,8 @@ auto gbts_seeding_algorithm::make_nodes(
     collection_types<float>::buffer bin_rads_buf(2 * cfg.n_eta_bins, mr().main);
     copy().setup(bin_rads_buf)->ignore();
 
-    minmax_rad_kernel({cfg.n_eta_bins, eta_bin_views_buf, node_params_buf,
-                       bin_rads_buf});
+    minmax_rad_kernel(
+        {cfg.n_eta_bins, eta_bin_views_buf, node_params_buf, bin_rads_buf});
 
     collection_types<float>::host bin_rads(2 * cfg.n_eta_bins, mr().host);
     copy()(vecmem::get_data(bin_rads_buf), bin_rads)->wait();
@@ -225,7 +225,8 @@ auto gbts_seeding_algorithm::make_graph(
     const collection_types<unsigned int>::host& eta_bin_views,
     const unsigned int nNodes,
     collection_types<unsigned int>::buffer& counters_buf,
-    collection_types<unsigned int>::host& h_counters) const -> graph_making_output {
+    collection_types<unsigned int>::host& h_counters) const
+    -> graph_making_output {
 
     const gbts_seedfinder_config& cfg = m_data->m_config;
     unsigned int* d_counters = counters_buf.ptr();
@@ -326,11 +327,11 @@ auto gbts_seeding_algorithm::make_graph(
     copy().setup(num_incoming_edges_buf)->ignore();
     copy().memset(num_incoming_edges_buf, 0)->ignore();
 
-    graph_edge_making_kernel(
-        {nUsedBinPairs, nMaxEdges, cfg.n_phi_bins, bin_pair_views_buf,
-         bin_pair_dphi_buf, node_params, node_phi, cfg.edge_making,
-         d_counters + gbts_counter::nEdges, edge_nodes_buf, edge_params_buf,
-         num_incoming_edges_buf});
+    graph_edge_making_kernel({nUsedBinPairs, nMaxEdges, cfg.n_phi_bins,
+                              bin_pair_views_buf, bin_pair_dphi_buf,
+                              node_params, node_phi, cfg.edge_making,
+                              d_counters + gbts_counter::nEdges, edge_nodes_buf,
+                              edge_params_buf, num_incoming_edges_buf});
 
     // Read back the number of edges produced.
     copy()(counters_buf, h_counters)->wait();
@@ -405,8 +406,8 @@ auto gbts_seeding_algorithm::make_graph(
     copy().setup(output_graph_buf)->ignore();
 
     graph_compression_kernel({nEdges, cfg.max_num_neighbours, node_index,
-                              edge_nodes_buf, num_neighbours_buf, neighbours_buf,
-                              reIndexer_buf, output_graph_buf});
+                              edge_nodes_buf, num_neighbours_buf,
+                              neighbours_buf, reIndexer_buf, output_graph_buf});
 
     return graph_making_output{std::move(output_graph_buf), nConnectedEdges};
 }
@@ -458,7 +459,8 @@ auto gbts_seeding_algorithm::extract_seeds(
     copy()(counters_buf, h_counters)->wait();
 
     const unsigned int nPaths = h_counters[gbts_counter::nPaths];
-    const unsigned int nTerminusEdges = h_counters[gbts_counter::nTerminusEdges];
+    const unsigned int nTerminusEdges =
+        h_counters[gbts_counter::nTerminusEdges];
     if (nTerminusEdges == 0) {
         TRACCC_WARNING("No terminus edges were found");
         return {0, mr().main};
@@ -512,9 +514,9 @@ auto gbts_seeding_algorithm::extract_seeds(
              seed_ambiguity_buf, d_counters + gbts_counter::nRejected,
              round == 0u});
 
-        reset_edge_bids_kernel(
-            {nProps, path_store_buf, seed_proposals_buf, edge_bids_buf,
-             seed_ambiguity_buf, d_counters + gbts_counter::nRejected});
+        reset_edge_bids_kernel({nProps, path_store_buf, seed_proposals_buf,
+                                edge_bids_buf, seed_ambiguity_buf,
+                                d_counters + gbts_counter::nRejected});
     }
 
     copy()(counters_buf, h_counters)->wait();
@@ -544,11 +546,10 @@ auto gbts_seeding_algorithm::extract_seeds(
                                seed_proposals_buf, path_store_buf,
                                seed_ambiguity_buf, hit_bids_buf});
 
-    gbts_seed_conversion_kernel({nProps, nSeeds, cfg.max_num_neighbours,
-                                 seed_proposals_buf, seed_ambiguity_buf,
-                                 path_store_buf, output_graph, reducedSP,
-                                 output_seeds, hit_bids_buf,
-                                 cfg.seed_ambi_params});
+    gbts_seed_conversion_kernel(
+        {nProps, nSeeds, cfg.max_num_neighbours, seed_proposals_buf,
+         seed_ambiguity_buf, path_store_buf, output_graph, reducedSP,
+         output_seeds, hit_bids_buf, cfg.seed_ambi_params});
 
     const unsigned int outputSeeds = copy().get_size(output_seeds);
     TRACCC_DEBUG("GBTS found " << outputSeeds << " seeds");

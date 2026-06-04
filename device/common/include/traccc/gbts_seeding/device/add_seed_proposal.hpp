@@ -29,7 +29,8 @@ namespace traccc::device {
 /// @param[in,out] d_seed_proposals_view   Per-seed (quality, path index)
 /// @param[in,out] d_edge_bids_view        Per-edge highest-bidder seed
 /// @param[in]  d_path_store_view          Per-path (parent, edge) entries
-/// @param[in]  depth                      Optional maximum walk depth (-1 == unlimited)
+/// @param[in]  depth                      Optional maximum walk depth (-1 ==
+/// unlimited)
 ///
 TRACCC_HOST_DEVICE
 inline void add_seed_proposal(

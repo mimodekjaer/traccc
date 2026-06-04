@@ -31,10 +31,11 @@ TRACCC_HOST_DEVICE inline void cca_iteration(
     // device_vector::data() idiom, as in clusterization/ccl_kernel). The
     // scattered terminus loop below is memory-latency bound, and indexing plain
     // pointers — as the gbts_changes reference does — lets the compiler overlap
-    // the independent neighbour loads (more memory-level parallelism) instead of
-    // serialising them through the device_vector object.
+    // the independent neighbour loads (more memory-level parallelism) instead
+    // of serialising them through the device_vector object.
     const unsigned int* d_output_graph =
-        collection_types<unsigned int>::const_device(d_output_graph_view).data();
+        collection_types<unsigned int>::const_device(d_output_graph_view)
+            .data();
     unsigned char* d_levels =
         collection_types<unsigned char>::device(d_levels_view).data();
     char* d_active_edges =
@@ -59,8 +60,7 @@ TRACCC_HOST_DEVICE inline void cca_iteration(
     }
 
     const unsigned int edge_pos = edge_size * globalIndex;
-    const unsigned int nNei =
-        d_output_graph[edge_pos + gbts_consts::nNei];
+    const unsigned int nNei = d_output_graph[edge_pos + gbts_consts::nNei];
 
     unsigned char next_level = d_levels[levelLoad + globalIndex];
 
@@ -89,8 +89,7 @@ TRACCC_HOST_DEVICE inline void cca_iteration(
         for (unsigned int nIdx = 0; nIdx < nNei; ++nIdx) {
             const unsigned int nextglobalIndex =
                 d_output_graph[edge_pos + gbts_consts::nei_start + nIdx];
-            if (next_level ==
-                1 + d_levels[nextglobalIndex]) {
+            if (next_level == 1 + d_levels[nextglobalIndex]) {
                 // calculate the #d_state_store nodes for segment extraction
                 // starting at this edge
                 out_paths = static_cast<short>(

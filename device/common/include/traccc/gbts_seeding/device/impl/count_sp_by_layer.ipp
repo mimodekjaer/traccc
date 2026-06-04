@@ -41,10 +41,10 @@ inline void count_sp_by_layer(
     const collection_types<float4>::view reducedSP_view,
     const collection_types<unsigned int>::view layerCounts_view,
     const collection_types<unsigned short>::view spacepointsLayer_view,
-    const unsigned int nSp,
-    const unsigned long int volumeMapSize, const unsigned long int surfaceMapSize,
+    const unsigned int nSp, const unsigned long int volumeMapSize,
+    const unsigned long int surfaceMapSize,
     const gbts_sp_counting_params sp_counting_params) {
-    
+
     if (globalIndex >= nSp) {
         return;
     }
@@ -65,8 +65,7 @@ inline void count_sp_by_layer(
     collection_types<float4>::device reducedSP(reducedSP_view);
 
     const auto spacepoint = spacepoints.at(globalIndex);
-    const auto measurement =
-        measurements.at(spacepoint.measurement_index_1());
+    const auto measurement = measurements.at(spacepoint.measurement_index_1());
 
     const detray::geometry::identifier geo_id = measurement.surface_link();
     const unsigned int volume = geo_id.volume();
@@ -101,15 +100,16 @@ inline void count_sp_by_layer(
         reducedSP[globalIndex].w = -CHAR_MAX - 1;
         return;
     }
-    cluster_diameter =
-        (sp_counting_params.doTauCut && type != 0) ? static_cast<float>(-1 * type)
-                                : cluster_diameter;
+    cluster_diameter = (sp_counting_params.doTauCut && type != 0)
+                           ? static_cast<float>(-1 * type)
+                           : cluster_diameter;
 
-    vecmem::device_atomic_ref<unsigned int>(layerCounts[layerIdx]).fetch_add(1u);
+    vecmem::device_atomic_ref<unsigned int>(layerCounts[layerIdx])
+        .fetch_add(1u);
     spacepointsLayer[globalIndex] = static_cast<unsigned short>(layerIdx);
     const std::array<float, 3u> pos = spacepoint.global();
-    reducedSP[globalIndex] = make_float4(pos[0], pos[1], pos[2],
-                                         cluster_diameter);
+    reducedSP[globalIndex] =
+        make_float4(pos[0], pos[1], pos[2], cluster_diameter);
 }
 
 }  // namespace traccc::device

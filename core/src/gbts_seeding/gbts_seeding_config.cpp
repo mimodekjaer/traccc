@@ -18,7 +18,8 @@ namespace traccc {
 // GeoIDBinning pair is detray geo ID and bin index (corrisponding to the
 // layers in layerInfo) minPt in MeV
 bool gbts_seedfinder_config::setLinkingScheme(
-    const std::vector<std::pair<unsigned int, std::vector<unsigned int>>>& input_binTables,
+    const std::vector<std::pair<unsigned int, std::vector<unsigned int>>>&
+        input_binTables,
     const device::gbts_layerInfo input_layerInfo,
     std::vector<std::pair<uint64_t, short>>& detrayGeoIDBinning,
     const float minPt = 900.0f,
@@ -29,10 +30,10 @@ bool gbts_seedfinder_config::setLinkingScheme(
     // copy layer-eta binning infomation
     layerInfo = input_layerInfo;
     // unroll binTables
-    for (std::pair<unsigned int, std::vector<unsigned int>> binPairs : input_binTables) {
+    for (std::pair<unsigned int, std::vector<unsigned int>> binPairs :
+         input_binTables) {
         for (unsigned int bin2 : binPairs.second) {
-            binTables.push_back(
-                std::make_pair(binPairs.first, bin2));
+            binTables.push_back(std::make_pair(binPairs.first, bin2));
         }
     }
 

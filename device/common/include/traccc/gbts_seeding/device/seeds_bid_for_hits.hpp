@@ -40,15 +40,13 @@ namespace traccc::device {
 ///
 TRACCC_HOST_DEVICE
 inline void seeds_bid_for_hits(
-    const global_index_t globalIndex, 
-    const unsigned int gridSize,
+    const global_index_t globalIndex, const unsigned int gridSize,
     const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<int2>::const_view& d_seed_proposals_view,
     const collection_types<int2>::const_view& d_path_store_view,
     const collection_types<char>::const_view& d_seed_ambiguity_view,
     const collection_types<unsigned long long int>::view d_hit_bids_view,
-    const unsigned int nProps,
-    const unsigned int edge_size);
+    const unsigned int nProps, const unsigned int edge_size);
 
 }  // namespace traccc::device
 

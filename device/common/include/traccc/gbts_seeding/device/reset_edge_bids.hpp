@@ -19,7 +19,7 @@ namespace traccc::device {
 
 /// Mark losing seed proposals against the current edge bids.
 ///
-/// Each thread (strided by gridSize) walks proposals in 
+/// Each thread (strided by gridSize) walks proposals in
 /// d_seed_proposals_view, compares against the winning bid recorded in
 /// d_edge_bids_view, and either updates d_seed_ambiguity_view or
 /// atomically increments nRejectedPropsCounter for losers.  Round -1
@@ -37,14 +37,12 @@ namespace traccc::device {
 ///
 TRACCC_HOST_DEVICE
 inline void reset_edge_bids(
-    const global_index_t globalIndex, 
-    const unsigned int gridSize,
+    const global_index_t globalIndex, const unsigned int gridSize,
     const collection_types<int2>::const_view& d_path_store_view,
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
     const collection_types<char>::view d_seed_ambiguity_view,
-    const unsigned int nProps,
-    unsigned int& nRejectedPropsCounter);
+    const unsigned int nProps, unsigned int& nRejectedPropsCounter);
 
 }  // namespace traccc::device
 

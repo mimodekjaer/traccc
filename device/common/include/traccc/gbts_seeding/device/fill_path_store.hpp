@@ -24,7 +24,8 @@ namespace traccc::device {
 /// path store via nPathStoreSizeCounter, and continues until all paths
 /// reach the graph boundary or until the frontier is empty.
 ///
-/// @param[in]  thread_id                 Thread/block identifier (one block/task)
+/// @param[in]  thread_id                 Thread/block identifier (one
+/// block/task)
 /// @param[in]  barrier                   Block-wide barrier
 /// @param[in,out] live_paths             Shared-mem frontier of in-flight paths
 /// @param[in,out] n_live_paths           Shared-mem frontier size
@@ -45,8 +46,8 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
     const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<unsigned char>::const_view& d_levels_view,
     unsigned int& nPathStoreSizeCounter, const unsigned int nTerminus,
-    const unsigned int nTerminusPerBlock,
-    const unsigned int max_num_neighbours, const unsigned int nPaths);
+    const unsigned int nTerminusPerBlock, const unsigned int max_num_neighbours,
+    const unsigned int nPaths);
 
 }  // namespace traccc::device
 

@@ -34,8 +34,8 @@ struct gbts_layerInfo {
         geo.reserve(n);
     }
 
-    void addLayer(char layerType, unsigned int firstBin, unsigned int nBins, float minEta,
-                  float etaBinWidth) {
+    void addLayer(char layerType, unsigned int firstBin, unsigned int nBins,
+                  float minEta, float etaBinWidth) {
         type.push_back(layerType);
         info.push_back(std::make_pair(firstBin, nBins));
         geo.push_back(std::make_pair(minEta, etaBinWidth));
@@ -190,7 +190,8 @@ struct gbts_sp_counting_params {
 
 struct gbts_seedfinder_config {
     bool setLinkingScheme(
-        const std::vector<std::pair<unsigned int, std::vector<unsigned int>>>& binTables,
+        const std::vector<std::pair<unsigned int, std::vector<unsigned int>>>&
+            binTables,
         const device::gbts_layerInfo layerInfo,
         std::vector<std::pair<uint64_t, int16_t>>& detrayGeoIDBinning,
         const float minPt, std::unique_ptr<const traccc::Logger> logger);
@@ -216,8 +217,8 @@ struct gbts_seedfinder_config {
     gbts_seed_ambi_params seed_ambi_params{};
 
     // Optional tau lookup table consumed by device::node_sorting when
-    // node_sorting.useTauLUT is set. Layout: [w_bin_edge, min_tau, max_tau, ...]
-    // per cluster-width bin. Empty by default (analytic formula is used).
+    // node_sorting.useTauLUT is set. Layout: [w_bin_edge, min_tau, max_tau,
+    // ...] per cluster-width bin. Empty by default (analytic formula is used).
     std::vector<float> tau_lut{};
 
     // node making bin counts
@@ -226,7 +227,8 @@ struct gbts_seedfinder_config {
     // graph making maxiums
     unsigned int max_num_neighbours = 10;
     // graph extraction cuts
-    unsigned char minLevel = 3;  // equivlent to a cut of #seed edges or #spacepoints-1
+    unsigned char minLevel =
+        3;  // equivlent to a cut of #seed edges or #spacepoints-1
     // maxium number of edges to be created per node(spacepoint)
     unsigned int max_edges_factor = 10;
     // number of seed-vs-edge bidding rounds during disambiguation
