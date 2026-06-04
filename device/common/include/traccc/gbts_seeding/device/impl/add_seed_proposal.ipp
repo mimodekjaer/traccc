@@ -45,12 +45,10 @@ inline void add_seed_proposal(
 
         vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
             d_edge_bids[static_cast<unsigned int>(path.x)]);
-        unsigned long long int old_val = atomic_bid.load();
-        while (seed_bid > old_val &&
-               !atomic_bid.compare_exchange_strong(old_val, seed_bid)) {
-            // old_val updated by compare_exchange_strong on failure
-        }
-        const unsigned long long int competing_offer = old_val;
+        // Atomically install our bid if it is the new maximum; fetch_max
+        // returns the value it replaced (the competing offer).
+        const unsigned long long int competing_offer =
+            atomic_bid.fetch_max(seed_bid);
 
         if (competing_offer > seed_bid) {
             d_seed_ambiguity[prop_idx] = -1;

@@ -589,7 +589,6 @@ void gbts_seeding_algorithm::add_terminus_to_path_store_kernel(
     kernels::add_terminus_to_path_store<<<n_blocks, n_threads, 0,
                                           details::get_stream(stream())>>>(
         payload.path_store, payload.outgoing_paths, payload.nConnectedEdges);
-    stream().synchronize();
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
@@ -609,7 +608,6 @@ void gbts_seeding_algorithm::fill_path_store_kernel(
         payload.path_store, payload.output_graph, payload.levels,
         payload.nPathStoreSizeCounter, payload.nTerminusEdges, terminusPerBlock,
         payload.max_num_neighbours, payload.nPaths + payload.nTerminusEdges);
-    stream().synchronize();
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
@@ -625,7 +623,7 @@ void gbts_seeding_algorithm::fit_segments_kernel(
             payload.nPathStoreSize, payload.nPropsCounter,
             payload.nTerminusEdges, payload.minLevel,
             payload.max_num_neighbours, payload.seed_extraction_params);
-    stream().synchronize();
+    //stream().synchronize();
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
@@ -638,7 +636,6 @@ void gbts_seeding_algorithm::reset_edge_bids_kernel(
                                details::get_stream(stream())>>>(
         payload.path_store, payload.seed_proposals, payload.edge_bids,
         payload.seed_ambiguity, payload.nProps, payload.nRejectedPropsCounter);
-    stream().synchronize();
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
@@ -652,7 +649,6 @@ void gbts_seeding_algorithm::seeds_rebid_for_edges_kernel(
         payload.path_store, payload.seed_proposals, payload.edge_bids,
         payload.seed_ambiguity, payload.nProps, payload.nRejectedPropsCounter,
         payload.first_round);
-    stream().synchronize();
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
@@ -666,7 +662,6 @@ void gbts_seeding_algorithm::seeds_bid_for_hits_kernel(
         payload.output_graph, payload.seed_proposals, payload.path_store,
         payload.seed_ambiguity, payload.hit_bids, payload.nProps,
         payload.edge_size);
-    stream().synchronize();
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 

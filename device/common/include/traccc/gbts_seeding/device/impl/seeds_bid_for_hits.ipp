@@ -57,20 +57,14 @@ inline void seeds_bid_for_hits(
                            gbts_consts::node1];
         vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
             d_hit_bids[sp_idx]);
-        unsigned long long int old_val = atomic_bid.load();
-        while (seed_bid > old_val &&
-               !atomic_bid.compare_exchange_strong(old_val, seed_bid)) {
-        }
+        atomic_bid.fetch_max(seed_bid);
     }
     const unsigned int sp_idx =
         d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
                        gbts_consts::node2];
     vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
         d_hit_bids[sp_idx]);
-    unsigned long long int old_val = atomic_bid.load();
-    while (seed_bid > old_val &&
-           !atomic_bid.compare_exchange_strong(old_val, seed_bid)) {
-    }
+    atomic_bid.fetch_max(seed_bid);
 }
 
 }  // namespace traccc::device
