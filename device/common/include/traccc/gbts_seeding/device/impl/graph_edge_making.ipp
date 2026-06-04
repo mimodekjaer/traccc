@@ -33,10 +33,10 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
     const gbts_edge_making_params& d_gbts_edge_making_params,
     unsigned int& nEdgesCounter,
     const collection_types<uint2>::view d_edge_nodes_view,
-    const collection_types<float>::view d_edge_exp_eta_view,
-    const collection_types<float>::view d_edge_curv_view,
-    const collection_types<float>::view d_edge_phi_z_view,
-    const collection_types<float>::view d_edge_phi_w_view,
+    const collection_types<gbts_edge_real_t>::view d_edge_exp_eta_view,
+    const collection_types<gbts_edge_real_t>::view d_edge_curv_view,
+    const collection_types<gbts_edge_real_t>::view d_edge_phi_z_view,
+    const collection_types<gbts_edge_real_t>::view d_edge_phi_w_view,
     const collection_types<unsigned int>::view d_num_outgoing_edges_view,
     const unsigned int nMaxEdges, const unsigned int nPhiBins) {
 
@@ -47,10 +47,11 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
     const collection_types<float>::const_device d_node_params(
         d_node_params_view);
     collection_types<uint2>::device d_edge_nodes(d_edge_nodes_view);
-    collection_types<float>::device d_edge_exp_eta(d_edge_exp_eta_view);
-    collection_types<float>::device d_edge_curv(d_edge_curv_view);
-    collection_types<float>::device d_edge_phi_z(d_edge_phi_z_view);
-    collection_types<float>::device d_edge_phi_w(d_edge_phi_w_view);
+    collection_types<gbts_edge_real_t>::device d_edge_exp_eta(
+        d_edge_exp_eta_view);
+    collection_types<gbts_edge_real_t>::device d_edge_curv(d_edge_curv_view);
+    collection_types<gbts_edge_real_t>::device d_edge_phi_z(d_edge_phi_z_view);
+    collection_types<gbts_edge_real_t>::device d_edge_phi_w(d_edge_phi_w_view);
     collection_types<unsigned int>::device d_num_outgoing_edges(
         d_num_outgoing_edges_view);
 
@@ -203,10 +204,10 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
                         .fetch_add(1u);
                     d_edge_nodes[nEdges] =
                         make_uint2(globalIdx2, begin_bin1 + n1Idx);
-                    d_edge_exp_eta[nEdges] = exp_eta;
-                    d_edge_curv[nEdges]    = curv;
-                    d_edge_phi_z[nEdges]   = phi2 + curv * r2;
-                    d_edge_phi_w[nEdges]   = phi1 + curv * r1;
+                    d_edge_exp_eta[nEdges] = gbts_to_real(exp_eta);
+                    d_edge_curv[nEdges]    = gbts_to_real(curv);
+                    d_edge_phi_z[nEdges]   = gbts_to_real(phi2 + curv * r2);
+                    d_edge_phi_w[nEdges]   = gbts_to_real(phi1 + curv * r1);
                 }
             }
         } else {
@@ -274,10 +275,10 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
                         .fetch_add(1u);
                     d_edge_nodes[nEdges] =
                         make_uint2(globalIdx2, begin_bin1 + n1Idx);
-                    d_edge_exp_eta[nEdges] = exp_eta;
-                    d_edge_curv[nEdges]    = curv;
-                    d_edge_phi_z[nEdges]   = phi2 + curv * r2;
-                    d_edge_phi_w[nEdges]   = phi1 + curv * r1;
+                    d_edge_exp_eta[nEdges] = gbts_to_real(exp_eta);
+                    d_edge_curv[nEdges]    = gbts_to_real(curv);
+                    d_edge_phi_z[nEdges]   = gbts_to_real(phi2 + curv * r2);
+                    d_edge_phi_w[nEdges]   = gbts_to_real(phi1 + curv * r1);
                 }
             }
         }

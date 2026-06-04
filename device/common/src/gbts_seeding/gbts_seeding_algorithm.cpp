@@ -111,13 +111,12 @@ auto gbts_seeding_algorithm::operator()(
     collection_types<unsigned int>::buffer original_sp_idx_buf(nSp, mr().main);
     copy().setup(original_sp_idx_buf)->ignore();
 
-    bin_sp_by_layer_kernel({nSp, sp_params_buf, reducedSP_buf, layerCounts_buf,
-                            spacepointsLayer_buf, original_sp_idx_buf});
-    sync();
-
-    // 1. Histogram spacepoints by layer->eta->phi and convert to nodes.
-    collection_types<std::pair<unsigned int, unsigned int>>::buffer layer_info_buf(cfg.nLayers,
-                                                                 mr().main);
+    // 1. Fused binning: scatter spacepoints into layer-ordered slots, compute
+    //    their eta/phi bin indices and fill the (eta, phi) histogram, all in a
+    //    single pass (replaces bin_sp_by_layer + node_eta_binning +
+    //    eta_phi_histo).
+    collection_types<std::pair<unsigned int, unsigned int>>::buffer
+        layer_info_buf(cfg.nLayers, mr().main);
     copy().setup(layer_info_buf)->ignore();
     copy()(vecmem::get_data(cfg.layerInfo.info), layer_info_buf)->ignore();
 
@@ -132,11 +131,6 @@ auto gbts_seeding_algorithm::operator()(
     collection_types<unsigned int>::buffer node_eta_index_buf(nNodes, mr().main);
     copy().setup(node_eta_index_buf)->ignore();
 
-    node_eta_binning_kernel({cfg.nLayers, sp_params_buf, layer_info_buf,
-                             layer_geo_buf, node_eta_index_buf,
-                             layerCounts_buf});
-    sync();
-
     const unsigned int hist_size = cfg.n_eta_bins * cfg.n_phi_bins;
     collection_types<unsigned int>::buffer eta_phi_histo_buf(hist_size, mr().main);
     copy().setup(eta_phi_histo_buf)->ignore();
@@ -144,9 +138,11 @@ auto gbts_seeding_algorithm::operator()(
     collection_types<unsigned int>::buffer phi_cusums_buf(hist_size, mr().main);
     copy().setup(phi_cusums_buf)->ignore();
 
-    eta_phi_histo_kernel({nNodes, cfg.n_phi_bins, node_phi_index_buf,
-                          node_eta_index_buf, eta_phi_histo_buf,
-                          sp_params_buf});
+    bin_sp_combined_kernel({nSp, cfg.n_phi_bins, sp_params_buf, reducedSP_buf,
+                            layerCounts_buf, spacepointsLayer_buf,
+                            original_sp_idx_buf, layer_info_buf, layer_geo_buf,
+                            node_eta_index_buf, node_phi_index_buf,
+                            eta_phi_histo_buf});
     sync();
 
     collection_types<unsigned int>::buffer eta_node_counter_buf(cfg.n_eta_bins,
@@ -180,10 +176,21 @@ auto gbts_seeding_algorithm::operator()(
     collection_types<unsigned int>::buffer node_index_buf(nNodes, mr().main);
     copy().setup(node_index_buf)->ignore();
 
+    // Optional tau LUT consumed by device::node_sorting when
+    // cfg.node_sorting.useTauLUT is set. A size-1 dummy is allocated when the
+    // LUT is unused so the kernel always receives a valid (never-read) view.
+    const unsigned int tau_lut_size = std::max<unsigned int>(
+        1u, static_cast<unsigned int>(cfg.tau_lut.size()));
+    collection_types<float>::buffer tau_lut_buf(tau_lut_size, mr().main);
+    copy().setup(tau_lut_buf)->ignore();
+    if (!cfg.tau_lut.empty()) {
+        copy()(vecmem::get_data(cfg.tau_lut), tau_lut_buf)->ignore();
+    }
+
     node_sorting_kernel({nNodes, cfg.n_phi_bins, sp_params_buf,
                          node_eta_index_buf, node_phi_index_buf, phi_cusums_buf,
                          node_params_buf, node_index_buf, original_sp_idx_buf,
-                         cfg.node_sorting});
+                         tau_lut_buf, cfg.node_sorting});
     sync();
 
     collection_types<unsigned int>::buffer eta_bin_views_buf(2 * cfg.n_eta_bins,
@@ -329,13 +336,17 @@ auto gbts_seeding_algorithm::operator()(
     // SoA edge-parameter buffers: each per-edge field lives in its own float
     // buffer so the matcher can early-exit a cut without paying for the
     // unread fields. Same total bytes as the prior packed float4 buffer.
-    collection_types<float>::buffer edge_exp_eta_buf(nMaxEdges, mr().main);
+    collection_types<gbts_edge_real_t>::buffer edge_exp_eta_buf(nMaxEdges,
+                                                               mr().main);
     copy().setup(edge_exp_eta_buf)->ignore();
-    collection_types<float>::buffer edge_curv_buf(nMaxEdges, mr().main);
+    collection_types<gbts_edge_real_t>::buffer edge_curv_buf(nMaxEdges,
+                                                            mr().main);
     copy().setup(edge_curv_buf)->ignore();
-    collection_types<float>::buffer edge_phi_z_buf(nMaxEdges, mr().main);
+    collection_types<gbts_edge_real_t>::buffer edge_phi_z_buf(nMaxEdges,
+                                                             mr().main);
     copy().setup(edge_phi_z_buf)->ignore();
-    collection_types<float>::buffer edge_phi_w_buf(nMaxEdges, mr().main);
+    collection_types<gbts_edge_real_t>::buffer edge_phi_w_buf(nMaxEdges,
+                                                             mr().main);
     copy().setup(edge_phi_w_buf)->ignore();
     collection_types<uint2>::buffer edge_nodes_buf(nMaxEdges, mr().main);
     copy().setup(edge_nodes_buf)->ignore();
@@ -343,20 +354,20 @@ auto gbts_seeding_algorithm::operator()(
     copy().setup(num_incoming_edges_buf)->ignore();
     copy().memset(num_incoming_edges_buf, 0)->ignore();
 
-    graph_edge_making_kernel({.nUsedBinPairs = nUsedBinPairs,
-                              .nMaxEdges = nMaxEdges,
-                              .nPhiBins = cfg.n_phi_bins,
-                              .bin_pair_views = bin_pair_views_buf,
-                              .bin_pair_dphi = bin_pair_dphi_buf,
-                              .node_params = node_params_buf,
-                              .edge_making_params = cfg.edge_making,
-                              .nEdgesCounter = d_counters + k_nEdges,
-                              .edge_nodes = edge_nodes_buf,
-                              .edge_exp_eta = edge_exp_eta_buf,
-                              .edge_curv = edge_curv_buf,
-                              .edge_phi_z = edge_phi_z_buf,
-                              .edge_phi_w = edge_phi_w_buf,
-                              .num_outgoing_edges = num_incoming_edges_buf});
+    graph_edge_making_kernel({nUsedBinPairs,
+                              nMaxEdges,
+                              cfg.n_phi_bins,
+                              bin_pair_views_buf,
+                              bin_pair_dphi_buf,
+                              node_params_buf,
+                              cfg.edge_making,
+                              d_counters + k_nEdges,
+                              edge_nodes_buf,
+                              edge_exp_eta_buf,
+                              edge_curv_buf,
+                              edge_phi_z_buf,
+                              edge_phi_w_buf,
+                              num_incoming_edges_buf});
     sync();
 
     // Read back the number of edges produced (and the rest of the counters in
@@ -403,21 +414,20 @@ auto gbts_seeding_algorithm::operator()(
     copy().setup(neighbours_buf)->ignore();
     copy().memset(neighbours_buf, 0)->ignore();
 
-    graph_edge_matching_kernel({.nEdges = nEdges,
-                                .nMaxNei = cfg.max_num_neighbours,
-                                .edge_matching_params = cfg.edge_matching,
-                                .edge_exp_eta = edge_exp_eta_buf,
-                                .edge_curv = edge_curv_buf,
-                                .edge_phi_z = edge_phi_z_buf,
-                                .edge_phi_w = edge_phi_w_buf,
-                                .edge_nodes = edge_nodes_buf,
-                                .num_outgoing_edges = num_incoming_edges_buf,
-                                .edge_links = edge_links_buf,
-                                .num_neighbours = num_neighbours_buf,
-                                .neighbours = neighbours_buf,
-                                .reIndexer = reIndexer_buf,
-                                .nConnectionsCounter =
-                                    d_counters + k_nConnections});
+    graph_edge_matching_kernel({nEdges,
+                                cfg.max_num_neighbours,
+                                cfg.edge_matching,
+                                edge_exp_eta_buf,
+                                edge_curv_buf,
+                                edge_phi_z_buf,
+                                edge_phi_w_buf,
+                                edge_nodes_buf,
+                                num_incoming_edges_buf,
+                                edge_links_buf,
+                                num_neighbours_buf,
+                                neighbours_buf,
+                                reIndexer_buf,
+                                d_counters + k_nConnections});
     sync();
 
     // 5. Edge re-indexing to keep only edges involved in any connection.
@@ -542,7 +552,7 @@ auto gbts_seeding_algorithm::operator()(
         {nProps, -1, path_store_buf, seed_proposals_buf, edge_bids_buf,
          seed_ambiguity_buf, d_counters + k_nRejectedProps});
 
-    for (int round = 0; round < 5; ++round) {
+    for (unsigned int round = 0; round < cfg.edge_bidding_rounds; ++round) {
         copy().memset(edge_bids_buf, 0)->ignore();
 
         seeds_rebid_for_edges_kernel({nProps, path_store_buf,
@@ -550,8 +560,8 @@ auto gbts_seeding_algorithm::operator()(
                                       seed_ambiguity_buf});
 
         reset_edge_bids_kernel(
-            {nProps, round, path_store_buf, seed_proposals_buf, edge_bids_buf,
-             seed_ambiguity_buf, d_counters + k_nRejectedProps});
+            {nProps, static_cast<int>(round), path_store_buf, seed_proposals_buf,
+             edge_bids_buf, seed_ambiguity_buf, d_counters + k_nRejectedProps});
     }
 
     copy()(counters_buf, h_counters)->wait();

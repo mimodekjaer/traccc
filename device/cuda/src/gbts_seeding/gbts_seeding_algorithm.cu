@@ -14,13 +14,12 @@
 
 // Project include(s).
 #include "traccc/gbts_seeding/device/add_terminus_to_path_store.hpp"
-#include "traccc/gbts_seeding/device/bin_sp_by_layer.hpp"
+#include "traccc/gbts_seeding/device/bin_sp_combined.hpp"
 #include "traccc/gbts_seeding/device/cca_iteration.hpp"
 #include "traccc/gbts_seeding/device/count_sp_by_layer.hpp"
 #include "traccc/gbts_seeding/device/count_terminus_edges.hpp"
 #include "traccc/gbts_seeding/device/edge_re_indexing.hpp"
 #include "traccc/gbts_seeding/device/eta_phi_counting.hpp"
-#include "traccc/gbts_seeding/device/eta_phi_histo.hpp"
 #include "traccc/gbts_seeding/device/eta_phi_prefix_sum.hpp"
 #include "traccc/gbts_seeding/device/fill_path_store.hpp"
 #include "traccc/gbts_seeding/device/fit_segments.hpp"
@@ -30,7 +29,6 @@
 #include "traccc/gbts_seeding/device/graph_edge_making.hpp"
 #include "traccc/gbts_seeding/device/graph_edge_matching.hpp"
 #include "traccc/gbts_seeding/device/minmax_rad.hpp"
-#include "traccc/gbts_seeding/device/node_eta_binning.hpp"
 #include "traccc/gbts_seeding/device/node_sorting.hpp"
 #include "traccc/gbts_seeding/device/reset_edge_bids.hpp"
 #include "traccc/gbts_seeding/device/seeds_bid_for_hits.hpp"
@@ -72,43 +70,25 @@ __global__ void count_sp_by_layer(
                               sp_counting_params);
 }
 
-/// CUDA kernel for running @c traccc::device::bin_sp_by_layer
-__global__ void bin_sp_by_layer(
+/// CUDA kernel for running @c traccc::device::bin_sp_combined
+__global__ void bin_sp_combined(
     const collection_types<float4>::view sp_params,
     const collection_types<float4>::const_view reducedSP,
     const collection_types<unsigned int>::view layerCounts,
     const collection_types<short>::const_view spacepointsLayer,
-    const collection_types<unsigned int>::view original_sp_idx, const unsigned int nSp) {
-
-    device::bin_sp_by_layer(details::global_index1(), sp_params, reducedSP,
-                            layerCounts, spacepointsLayer, original_sp_idx,
-                            nSp);
-}
-
-/// CUDA kernel for running @c traccc::device::node_eta_binning
-__global__ void node_eta_binning(
-    const collection_types<float4>::const_view sp_params,
-    const collection_types<std::pair<unsigned int, unsigned int>>::const_view layer_info,
+    const collection_types<unsigned int>::view original_sp_idx,
+    const collection_types<std::pair<unsigned int, unsigned int>>::const_view
+        layer_info,
     const collection_types<std::pair<float, float>>::const_view layer_geo,
     const collection_types<unsigned int>::view node_eta_index,
-    const collection_types<unsigned int>::view layerCounts, const unsigned int nLayers) {
-
-    device::node_eta_binning(blockIdx.x, threadIdx.x, blockDim.x, sp_params,
-                             layer_info, layer_geo, node_eta_index,
-                             layerCounts, nLayers);
-}
-
-/// CUDA kernel for running @c traccc::device::eta_phi_histo
-__global__ void eta_phi_histo(
     const collection_types<unsigned int>::view node_phi_index,
-    const collection_types<unsigned int>::const_view node_eta_index,
     const collection_types<unsigned int>::view eta_phi_histo,
-    const collection_types<float4>::const_view sp_params,
-    const unsigned int nNodes, const unsigned int nPhiBins) {
+    const unsigned int nSp, const unsigned int nPhiBins) {
 
-    device::eta_phi_histo(details::global_index1(), node_phi_index,
-                          node_eta_index, eta_phi_histo, sp_params, nNodes,
-                          nPhiBins);
+    device::bin_sp_combined(details::global_index1(), sp_params, reducedSP,
+                            layerCounts, spacepointsLayer, original_sp_idx,
+                            layer_info, layer_geo, node_eta_index,
+                            node_phi_index, eta_phi_histo, nSp, nPhiBins);
 }
 
 /// CUDA kernel for running @c traccc::device::eta_phi_counting
@@ -141,12 +121,13 @@ __global__ void node_sorting(
     const collection_types<float>::view node_params,
     const collection_types<unsigned int>::view node_index,
     const collection_types<unsigned int>::const_view original_sp_idx,
+    const collection_types<float>::const_view tau_lut,
     const gbts_node_sorting_params node_sorting_params,
     const unsigned int nNodes, const unsigned int nPhiBins) {
 
     device::node_sorting(details::global_index1(), sp_params, node_eta_index,
                          node_phi_index, phi_cusums, node_params, node_index,
-                         original_sp_idx, node_sorting_params, nNodes,
+                         original_sp_idx, tau_lut, node_sorting_params, nNodes,
                          nPhiBins);
 }
 
@@ -171,10 +152,10 @@ __global__ void graph_edge_making(
     const collection_types<float>::const_view node_params,
     const gbts_edge_making_params edge_making_params,
     unsigned int* nEdgesCounter, collection_types<uint2>::view edge_nodes,
-    const collection_types<float>::view edge_exp_eta,
-    const collection_types<float>::view edge_curv,
-    const collection_types<float>::view edge_phi_z,
-    const collection_types<float>::view edge_phi_w,
+    const collection_types<gbts_edge_real_t>::view edge_exp_eta,
+    const collection_types<gbts_edge_real_t>::view edge_curv,
+    const collection_types<gbts_edge_real_t>::view edge_phi_z,
+    const collection_types<gbts_edge_real_t>::view edge_phi_w,
     const collection_types<unsigned int>::view num_outgoing_edges,
     const unsigned int nMaxEdges, const unsigned int nPhiBins) {
 
@@ -207,10 +188,10 @@ __global__ void graph_edge_linking(
 template <unsigned int NMaxNei>
 __global__ void graph_edge_matching(
     const gbts_edge_matching_params edge_matching_params,
-    const collection_types<float>::const_view edge_exp_eta,
-    const collection_types<float>::const_view edge_curv,
-    const collection_types<float>::const_view edge_phi_z,
-    const collection_types<float>::const_view edge_phi_w,
+    const collection_types<gbts_edge_real_t>::const_view edge_exp_eta,
+    const collection_types<gbts_edge_real_t>::const_view edge_curv,
+    const collection_types<gbts_edge_real_t>::const_view edge_phi_z,
+    const collection_types<gbts_edge_real_t>::const_view edge_phi_w,
     const collection_types<uint2>::const_view edge_nodes,
     const collection_types<unsigned int>::const_view num_outgoing_edges,
     const collection_types<unsigned int>::const_view edge_links,
@@ -232,10 +213,10 @@ __global__ void graph_edge_matching(
 // Add more cases here if profiling shows another hot value.
 template __global__ void graph_edge_matching<10>(
     const gbts_edge_matching_params,
-    const collection_types<float>::const_view,
-    const collection_types<float>::const_view,
-    const collection_types<float>::const_view,
-    const collection_types<float>::const_view,
+    const collection_types<gbts_edge_real_t>::const_view,
+    const collection_types<gbts_edge_real_t>::const_view,
+    const collection_types<gbts_edge_real_t>::const_view,
+    const collection_types<gbts_edge_real_t>::const_view,
     const collection_types<uint2>::const_view,
     const collection_types<unsigned int>::const_view,
     const collection_types<unsigned int>::const_view,
@@ -248,10 +229,10 @@ template __global__ void graph_edge_matching<10>(
 /// don't match a templated instantiation.
 __global__ void graph_edge_matching_dyn(
     const gbts_edge_matching_params edge_matching_params,
-    const collection_types<float>::const_view edge_exp_eta,
-    const collection_types<float>::const_view edge_curv,
-    const collection_types<float>::const_view edge_phi_z,
-    const collection_types<float>::const_view edge_phi_w,
+    const collection_types<gbts_edge_real_t>::const_view edge_exp_eta,
+    const collection_types<gbts_edge_real_t>::const_view edge_curv,
+    const collection_types<gbts_edge_real_t>::const_view edge_phi_z,
+    const collection_types<gbts_edge_real_t>::const_view edge_phi_w,
     const collection_types<uint2>::const_view edge_nodes,
     const collection_types<unsigned int>::const_view num_outgoing_edges,
     const collection_types<unsigned int>::const_view edge_links,
@@ -474,39 +455,17 @@ void gbts_seeding_algorithm::count_sp_by_layer_kernel(
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
-void gbts_seeding_algorithm::bin_sp_by_layer_kernel(
-    const bin_sp_by_layer_kernel_payload& payload) const {
+void gbts_seeding_algorithm::bin_sp_combined_kernel(
+    const bin_sp_combined_kernel_payload& payload) const {
 
     const unsigned int n_threads = 128;
     const unsigned int n_blocks = 1 + (payload.nSp - 1) / n_threads;
-    kernels::bin_sp_by_layer<<<n_blocks, n_threads, 0,
+    kernels::bin_sp_combined<<<n_blocks, n_threads, 0,
                                details::get_stream(stream())>>>(
         payload.sp_params, payload.reducedSP, payload.layerCounts,
-        payload.spacepointsLayer, payload.original_sp_idx, payload.nSp);
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
-}
-
-void gbts_seeding_algorithm::node_eta_binning_kernel(
-    const node_eta_binning_kernel_payload& payload) const {
-
-    const unsigned int n_threads = 128;
-    const unsigned int n_blocks = payload.nLayers;
-    kernels::node_eta_binning<<<n_blocks, n_threads, 0,
-                                details::get_stream(stream())>>>(
-        payload.sp_params, payload.layer_info, payload.layer_geo,
-        payload.node_eta_index, payload.layerCounts, payload.nLayers);
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
-}
-
-void gbts_seeding_algorithm::eta_phi_histo_kernel(
-    const eta_phi_histo_kernel_payload& payload) const {
-
-    const unsigned int n_threads = 128;
-    const unsigned int n_blocks = 1 + (payload.nNodes - 1) / n_threads;
-    kernels::eta_phi_histo<<<n_blocks, n_threads, 0,
-                             details::get_stream(stream())>>>(
-        payload.node_phi_index, payload.node_eta_index, payload.eta_phi_histo,
-        payload.sp_params, payload.nNodes, payload.nPhiBins);
+        payload.spacepointsLayer, payload.original_sp_idx, payload.layer_info,
+        payload.layer_geo, payload.node_eta_index, payload.node_phi_index,
+        payload.eta_phi_histo, payload.nSp, payload.nPhiBins);
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
@@ -543,8 +502,8 @@ void gbts_seeding_algorithm::node_sorting_kernel(
                             details::get_stream(stream())>>>(
         payload.sp_params, payload.node_eta_index, payload.node_phi_index,
         payload.phi_cusums, payload.node_params, payload.node_index,
-        payload.original_sp_idx, payload.node_sorting_params, payload.nNodes,
-        payload.nPhiBins);
+        payload.original_sp_idx, payload.tau_lut, payload.node_sorting_params,
+        payload.nNodes, payload.nPhiBins);
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 

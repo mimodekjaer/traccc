@@ -33,7 +33,8 @@ namespace traccc::device {
 /// @param[out] d_node_params_view         5-tuple geometry params, sorted slot
 /// @param[out] d_node_index_view          Sorted slot → original SP index
 /// @param[in]  d_original_sp_idx_view     Layer-ordered → original SP map
-/// @param[in]  ap                         Graph-building parameters
+/// @param[in]  d_tau_lut_view             Optional tau LUT (used iff ap.useTauLUT)
+/// @param[in]  ap                         Node-sorting / tau-prediction params
 /// @param[in]  nNodes                     Total number of GBTS nodes
 /// @param[in]  nPhiBins                   Number of phi bins per eta slice
 ///
@@ -41,12 +42,13 @@ TRACCC_HOST_DEVICE
 inline void node_sorting(
     const global_index_t globalIndex,
     const collection_types<float4>::const_view& d_sp_params_view,
-    const collection_types<int>::const_view& d_node_eta_index_view,
-    const collection_types<int>::const_view& d_node_phi_index_view,
-    const collection_types<int>::view d_phi_cusums_view,
+    const collection_types<unsigned int>::const_view& d_node_eta_index_view,
+    const collection_types<unsigned int>::const_view& d_node_phi_index_view,
+    const collection_types<unsigned int>::view d_phi_cusums_view,
     const collection_types<float>::view d_node_params_view,
-    const collection_types<int>::view d_node_index_view,
-    const collection_types<int>::const_view& d_original_sp_idx_view,
+    const collection_types<unsigned int>::view d_node_index_view,
+    const collection_types<unsigned int>::const_view& d_original_sp_idx_view,
+    const collection_types<float>::const_view& d_tau_lut_view,
     const gbts_node_sorting_params& ap,
     const unsigned int nNodes,
     const unsigned int nPhiBins);

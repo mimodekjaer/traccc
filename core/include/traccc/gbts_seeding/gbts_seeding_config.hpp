@@ -87,6 +87,16 @@ struct gbts_node_sorting_params {
     float tMax_correction = 0.15f;
     // Slope of the upper-tau line.
     float tMax_slope = 6.1f;
+    // Upper bound on |tau| for nodes without a usable cluster width
+    // (~4.3 eta detector acceptance).
+    float maxTau = 36.0f;
+    // Opt-in: use a tau lookup table instead of the analytic formula above.
+    // The LUT is laid out as [w_bin_edge, min_tau, max_tau, ...] per bin.
+    bool useTauLUT = false;
+    // Inverse cluster-width bin size used to index the LUT.
+    float tau_lut_inv_bin = 0.0f;
+    // Number of float entries in the LUT (bounds the index).
+    unsigned int tauLutSize = 0;
 };
 
 // Geometric / kinematic edge-making cuts read by device::graph_edge_making.
@@ -202,6 +212,11 @@ struct gbts_seedfinder_config {
     gbts_seed_extraction_params seed_extraction_params{};
     gbts_seed_ambi_params seed_ambi_params{};
 
+    // Optional tau lookup table consumed by device::node_sorting when
+    // node_sorting.useTauLUT is set. Layout: [w_bin_edge, min_tau, max_tau, ...]
+    // per cluster-width bin. Empty by default (analytic formula is used).
+    std::vector<float> tau_lut{};
+
     // node making bin counts
     unsigned int n_eta_bins = 0;  // calculated from input layerInfo
     unsigned int n_phi_bins = 128;
@@ -211,6 +226,8 @@ struct gbts_seedfinder_config {
     unsigned char minLevel = 3;  // equivlent to a cut of #seed edges or #spacepoints-1
     // maxium number of edges to be created per node(spacepoint)
     unsigned int max_edges_factor = 10;
+    // number of seed-vs-edge bidding rounds during disambiguation
+    unsigned int edge_bidding_rounds = 5;
 };
 
 }  // namespace traccc

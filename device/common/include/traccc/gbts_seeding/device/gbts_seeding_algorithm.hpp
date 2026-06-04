@@ -112,10 +112,17 @@ class gbts_seeding_algorithm
     virtual void count_sp_by_layer_kernel(
         const count_sp_by_layer_kernel_payload& payload) const = 0;
 
-    /// Payload for the bin_sp_by_layer_kernel function
-    struct bin_sp_by_layer_kernel_payload {
+    /// Payload for the bin_sp_combined_kernel function
+    ///
+    /// Fuses the former bin_sp_by_layer + node_eta_binning + eta_phi_histo
+    /// stages: each spacepoint is read once and scattered into its layer slot,
+    /// its eta/phi bin indices are computed, and the (eta, phi) histogram is
+    /// bumped, all in a single pass.
+    struct bin_sp_combined_kernel_payload {
         /// Number of spacepoints in the event
         const unsigned int nSp;
+        /// Number of phi bins per eta slice
+        const unsigned int nPhiBins;
         /// Output: per-spacepoint (x, y, z, r) bin parameters, layer-ordered
         const collection_types<float4>::view& sp_params;
         /// Input: reduced (x, y, z, r) per spacepoint from count_sp_by_layer
@@ -126,60 +133,24 @@ class gbts_seeding_algorithm
         const collection_types<short>::const_view& spacepointsLayer;
         /// Output: layer-ordered index back to the original spacepoint slot
         const collection_types<unsigned int>::view& original_sp_idx;
-    };
-
-    /// Spacepoint-by-layer binning kernel launcher
-    ///
-    /// @param payload The payload for the kernel
-    ///
-    virtual void bin_sp_by_layer_kernel(
-        const bin_sp_by_layer_kernel_payload& payload) const = 0;
-
-    /// Payload for the node_eta_binning_kernel function
-    struct node_eta_binning_kernel_payload {
-        /// Number of GBTS layers (one CUDA block per layer)
-        const unsigned int nLayers;
-        /// Layer-ordered (x, y, z, r) per spacepoint
-        const collection_types<float4>::const_view& sp_params;
         /// Per-layer (first eta bin, number of eta bins) pair
         const collection_types<std::pair<unsigned int, unsigned int>>::const_view& layer_info;
         /// Per-layer geometry pair used to compute eta (e.g. (rmin, zmax))
         const collection_types<std::pair<float, float>>::const_view& layer_geo;
         /// Output: global eta-bin index assigned to each node
         const collection_types<unsigned int>::view& node_eta_index;
-        /// Per-layer spacepoint count prefix sum (read to locate this layer's range)
-        const collection_types<unsigned int>::view& layerCounts;
-    };
-
-    /// Node eta-binning kernel launcher
-    ///
-    /// @param payload The payload for the kernel
-    ///
-    virtual void node_eta_binning_kernel(
-        const node_eta_binning_kernel_payload& payload) const = 0;
-
-    /// Payload for the eta_phi_histo_kernel function
-    struct eta_phi_histo_kernel_payload {
-        /// Total number of GBTS nodes (== number of binned spacepoints)
-        const unsigned int nNodes;
-        /// Number of phi bins per eta slice
-        const unsigned int nPhiBins;
         /// Output: phi-bin index assigned to each node
         const collection_types<unsigned int>::view& node_phi_index;
-        /// Eta-bin index for each node (from node_eta_binning)
-        const collection_types<unsigned int>::const_view& node_eta_index;
         /// Output: flat (eta, phi) histogram, atomically incremented per node
         const collection_types<unsigned int>::view& eta_phi_histo;
-        /// Layer-ordered (x, y, z, r) per spacepoint; used for phi computation
-        const collection_types<float4>::const_view& sp_params;
     };
 
-    /// Eta-phi histogram kernel launcher
+    /// Fused spacepoint-binning kernel launcher
     ///
     /// @param payload The payload for the kernel
     ///
-    virtual void eta_phi_histo_kernel(
-        const eta_phi_histo_kernel_payload& payload) const = 0;
+    virtual void bin_sp_combined_kernel(
+        const bin_sp_combined_kernel_payload& payload) const = 0;
 
     /// Payload for the eta_phi_counting_kernel function
     struct eta_phi_counting_kernel_payload {
@@ -241,6 +212,8 @@ class gbts_seeding_algorithm
         const collection_types<unsigned int>::view& node_index;
         /// Map from layer-ordered SP index to the original SP slot
         const collection_types<unsigned int>::const_view& original_sp_idx;
+        /// Optional tau lookup table (used iff node_sorting_params.useTauLUT)
+        const collection_types<float>::const_view& tau_lut;
         /// Tau-prediction cuts read by @c device::node_sorting
         const gbts_node_sorting_params node_sorting_params;
     };
@@ -292,13 +265,13 @@ class gbts_seeding_algorithm
         /// Output: (src, dst) node indices per edge
         const collection_types<uint2>::view& edge_nodes;
         /// Output: per-edge exp(-eta) ( = sqrt(1+tau^2)-tau ) used by matching
-        const collection_types<float>::view& edge_exp_eta;
+        const collection_types<gbts_edge_real_t>::view& edge_exp_eta;
         /// Output: per-edge curvature (dphi / dr) used by matching
-        const collection_types<float>::view& edge_curv;
+        const collection_types<gbts_edge_real_t>::view& edge_curv;
         /// Output: per-edge predicted phi at layer-2 radius (read by self side)
-        const collection_types<float>::view& edge_phi_z;
+        const collection_types<gbts_edge_real_t>::view& edge_phi_z;
         /// Output: per-edge predicted phi at layer-1 radius (read by candidates)
-        const collection_types<float>::view& edge_phi_w;
+        const collection_types<gbts_edge_real_t>::view& edge_phi_w;
         /// Output: per-destination-node incoming-edge count (atomic)
         const collection_types<unsigned int>::view& num_outgoing_edges;
     };
@@ -338,13 +311,13 @@ class gbts_seeding_algorithm
         /// Edge-matching pair cuts
         const gbts_edge_matching_params edge_matching_params;
         /// Per-edge exp(-eta) ( = sqrt(1+tau^2)-tau ), from graph_edge_making
-        const collection_types<float>::const_view& edge_exp_eta;
+        const collection_types<gbts_edge_real_t>::const_view& edge_exp_eta;
         /// Per-edge curvature (dphi / dr), from graph_edge_making
-        const collection_types<float>::const_view& edge_curv;
+        const collection_types<gbts_edge_real_t>::const_view& edge_curv;
         /// Per-edge predicted phi at layer-2 radius (self side reads this)
-        const collection_types<float>::const_view& edge_phi_z;
+        const collection_types<gbts_edge_real_t>::const_view& edge_phi_z;
         /// Per-edge predicted phi at layer-1 radius (candidate side reads this)
-        const collection_types<float>::const_view& edge_phi_w;
+        const collection_types<gbts_edge_real_t>::const_view& edge_phi_w;
         /// (src, dst) node indices per edge
         const collection_types<uint2>::const_view& edge_nodes;
         /// Per-node prefix sum of incoming edges (used to locate candidates)

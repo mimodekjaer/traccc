@@ -44,12 +44,8 @@ class gbts_seeding_algorithm : public device::gbts_seeding_algorithm,
 
     void count_sp_by_layer_kernel(
         const count_sp_by_layer_kernel_payload& payload) const override;
-    void bin_sp_by_layer_kernel(
-        const bin_sp_by_layer_kernel_payload& payload) const override;
-    void node_eta_binning_kernel(
-        const node_eta_binning_kernel_payload& payload) const override;
-    void eta_phi_histo_kernel(
-        const eta_phi_histo_kernel_payload& payload) const override;
+    void bin_sp_combined_kernel(
+        const bin_sp_combined_kernel_payload& payload) const override;
     void eta_phi_counting_kernel(
         const eta_phi_counting_kernel_payload& payload) const override;
     void eta_phi_prefix_sum_kernel(

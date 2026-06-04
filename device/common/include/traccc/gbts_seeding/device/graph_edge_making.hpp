@@ -62,10 +62,10 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
     const gbts_edge_making_params& d_gbts_edge_making_params,
     unsigned int& nEdgesCounter,
     const collection_types<uint2>::view d_edge_nodes_view,
-    const collection_types<float>::view d_edge_exp_eta_view,
-    const collection_types<float>::view d_edge_curv_view,
-    const collection_types<float>::view d_edge_phi_z_view,
-    const collection_types<float>::view d_edge_phi_w_view,
+    const collection_types<gbts_edge_real_t>::view d_edge_exp_eta_view,
+    const collection_types<gbts_edge_real_t>::view d_edge_curv_view,
+    const collection_types<gbts_edge_real_t>::view d_edge_phi_z_view,
+    const collection_types<gbts_edge_real_t>::view d_edge_phi_w_view,
     const collection_types<unsigned int>::view d_num_outgoing_edges_view,
     const unsigned int nMaxEdges, const unsigned int nPhiBins);
 
