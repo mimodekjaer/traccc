@@ -14,6 +14,9 @@
 #include "traccc/gbts_seeding/device/add_seed_proposal.hpp"
 #include "traccc/gbts_seeding/gbts_types.hpp"
 
+// VecMem include(s).
+#include <vecmem/memory/device_atomic_ref.hpp>
+
 namespace traccc::device {
 
 TRACCC_HOST_DEVICE
@@ -23,15 +26,31 @@ inline void seeds_rebid_for_edges(
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
     const collection_types<char>::view d_seed_ambiguity_view,
-    const unsigned int nProps) {
+    const unsigned int nProps, unsigned int& nRejectedPropsCounter,
+    const bool first_round) {
 
     collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
     collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
 
     for (unsigned int prop_idx = globalIndex; prop_idx < nProps;
          prop_idx += gridSize) {
+
         const char ambi = d_seed_ambiguity[prop_idx];
-        if ((ambi == -2) | (ambi == 0)) {
+
+        if (first_round) {
+            if (ambi == 0) {
+                // rebid 'best seed from edge' in later rounds
+                d_seed_ambiguity[prop_idx] = 1;
+                // Here there is no continue by design
+            } else {
+                d_seed_ambiguity[prop_idx] = -2;
+                // count rejected props to calculate nSeeds
+                vecmem::device_atomic_ref<unsigned int>(nRejectedPropsCounter)
+                    .fetch_add(1u);
+                continue;
+            }
+        } else if ((ambi == -2) | (ambi == 0)) {
+            // only rebid for maybes
             continue;
         }
         const int2 prop = d_seed_proposals[prop_idx];

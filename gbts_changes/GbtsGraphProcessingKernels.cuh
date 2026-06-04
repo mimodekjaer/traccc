@@ -93,8 +93,8 @@ __global__ static void CCA_IterationKernel(const int* d_output_graph,
         char next_level = d_levels[levelLoad + edgeIdx];
 
         bool localChange = false;
-        for (int nIdx = 0; nIdx < nNei;
-             nIdx++) {  // loop over neighbouring edges
+        // loop over neighbouring edges
+        for (int nIdx = 0; nIdx < nNei; nIdx++) { 
 
             int nextEdgeIdx =
                 d_output_graph[edge_pos +

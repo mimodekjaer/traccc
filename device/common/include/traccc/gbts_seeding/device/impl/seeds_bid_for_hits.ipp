@@ -28,8 +28,7 @@ inline void seeds_bid_for_hits(
     const collection_types<int2>::const_view& d_path_store_view,
     const collection_types<char>::const_view& d_seed_ambiguity_view,
     const collection_types<unsigned long long int>::view d_hit_bids_view,
-    const unsigned int nProps, const unsigned int edge_size,
-    const unsigned int nConnectedEdges) {
+    const unsigned int nProps, const unsigned int edge_size) {
 
     const collection_types<unsigned int>::const_device d_output_graph(
         d_output_graph_view);
@@ -39,8 +38,6 @@ inline void seeds_bid_for_hits(
     const collection_types<int2>::const_device d_seed_proposals(
         d_seed_proposals_view);
     collection_types<unsigned long long int>::device d_hit_bids(d_hit_bids_view);
-
-    (void)edge_size;  // SoA layout: column stride is nConnectedEdges.
 
     for (unsigned int prop_idx = globalIndex; prop_idx < nProps;
          prop_idx += gridSize) {
@@ -55,10 +52,9 @@ inline void seeds_bid_for_hits(
         int2 path = make_int2(0, prop.y);
         while (path.y >= 0) {
             path = d_path_store[static_cast<unsigned int>(path.y)];
-            const unsigned int sp_idx = d_output_graph[
-                traccc::device::gbts_og_index(
-                    traccc::device::gbts_consts::node1,
-                    static_cast<unsigned int>(path.x), nConnectedEdges)];
+            const unsigned int sp_idx =
+                d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+                               gbts_consts::node1];
             vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
                 d_hit_bids[sp_idx]);
             unsigned long long int old_val = atomic_bid.load();
@@ -66,10 +62,9 @@ inline void seeds_bid_for_hits(
                    !atomic_bid.compare_exchange_strong(old_val, seed_bid)) {
             }
         }
-        const int sp_idx = d_output_graph[
-            traccc::device::gbts_og_index(
-                traccc::device::gbts_consts::node2,
-                static_cast<unsigned int>(path.x), nConnectedEdges)];
+        const unsigned int sp_idx =
+            d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+                           gbts_consts::node2];
         vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
             d_hit_bids[sp_idx]);
         unsigned long long int old_val = atomic_bid.load();

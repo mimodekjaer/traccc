@@ -13,6 +13,7 @@
 // Project include(s).
 #include "traccc/definitions/qualifiers.hpp"
 #include "traccc/edm/container.hpp"
+#include "traccc/gbts_seeding/gbts_types.hpp"
 
 namespace traccc::device {
 
@@ -31,9 +32,9 @@ namespace traccc::device {
 TRACCC_HOST_DEVICE
 inline void minmax_rad(
     const global_index_t globalIndex,
-    const collection_types<int>::const_view& d_eta_bin_views_view,
-    const collection_types<float>::const_view& d_node_params_view,
-    const collection_types<float>::view d_bin_rads_view, 
+    const collection_types<unsigned int>::const_view& d_eta_bin_views_view,
+    const collection_types<float4>::const_view& d_node_params_view,
+    const collection_types<float>::view& d_bin_rads_view,
     const unsigned int maxEtaBin);
 
 }  // namespace traccc::device

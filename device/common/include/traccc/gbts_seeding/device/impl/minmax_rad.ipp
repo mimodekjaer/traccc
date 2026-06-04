@@ -11,6 +11,7 @@
 #include "traccc/definitions/qualifiers.hpp"
 #include "traccc/device/global_index.hpp"
 #include "traccc/edm/container.hpp"
+#include "traccc/gbts_seeding/gbts_types.hpp"
 
 namespace traccc::device {
 
@@ -18,7 +19,7 @@ TRACCC_HOST_DEVICE
 inline void minmax_rad(
     const global_index_t globalIndex,
     const collection_types<unsigned int>::const_view& d_eta_bin_views_view,
-    const collection_types<float>::const_view& d_node_params_view,
+    const collection_types<float4>::const_view& d_node_params_view,
     const collection_types<float>::view& d_bin_rads_view,
     const unsigned int maxEtaBin) {
 
@@ -28,22 +29,18 @@ inline void minmax_rad(
 
     const collection_types<unsigned int>::const_device d_eta_bin_views(
         d_eta_bin_views_view);
-    const collection_types<float>::const_device d_node_params(
+    const collection_types<float4>::const_device d_node_params(
         d_node_params_view);
     collection_types<float>::device d_bin_rads(d_bin_rads_view);
 
     const unsigned int node_start = d_eta_bin_views[2u * globalIndex];
     const unsigned int node_end = d_eta_bin_views[2u * globalIndex + 1u];
 
-    //if (node_start == node_end) {
-    //    return;
-    //}
-
     float min_r = 1e8f;
     float max_r = -1e8f;
 
     for (unsigned int idx = node_start; idx < node_end; idx++) {
-        const float r = d_node_params[5 * idx + 3];
+        const float r = d_node_params[idx].z;
         max_r = fmaxf(r, max_r);
         min_r = fminf(r, min_r);
     }

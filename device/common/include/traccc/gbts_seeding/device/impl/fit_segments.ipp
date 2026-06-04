@@ -227,7 +227,6 @@ inline void fit_segments(
     const unsigned int nPathStoreSize, unsigned int& nPropsCounter,
     const unsigned int nTerminusEdges, const unsigned char minLevel,
     const unsigned int max_num_neighbours,
-    const unsigned int nConnectedEdges,
     const gbts_seed_extraction_params& seed_extraction_params) {
 
     const collection_types<float4>::const_device d_sp_reduced(
@@ -240,33 +239,32 @@ inline void fit_segments(
     if (path_idx >= nPathStoreSize) {
         return;
     }
-    (void)max_num_neighbours;  // SoA layout: column stride is nConnectedEdges.
+    // Row-major output graph: each edge owns a contiguous block of
+    // edge_size = 2 + 1 + max_num_neighbours ints.
+    const unsigned int edge_size = 2u + 1u + max_num_neighbours;
 
-    unsigned int length = 1;
+    unsigned char length = 1;
     bool toggle = false;
     gbts_detail::edgeState state1;
     gbts_detail::edgeState state2;
 
     int2 path = d_path_store[path_idx];
 
-    const unsigned int nodeidx1 = d_output_graph[
-        traccc::device::gbts_og_index(traccc::device::gbts_consts::node1,
-                                      static_cast<unsigned int>(path.x),
-                                      nConnectedEdges)];
+    const unsigned int nodeidx1 =
+        d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+                       gbts_consts::node1];
     traccc::float4 node1 = d_sp_reduced[nodeidx1];
-    const unsigned int nodeidx2 = d_output_graph[
-        traccc::device::gbts_og_index(traccc::device::gbts_consts::node2,
-                                      static_cast<unsigned int>(path.x),
-                                      nConnectedEdges)];
+    const unsigned int nodeidx2 =
+        d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+                       gbts_consts::node2];
     traccc::float4 node2 = d_sp_reduced[nodeidx2];
 
     state1.initialize(node2, node1);
     while (path.y >= 0) {
         path = d_path_store[static_cast<unsigned int>(path.y)];
         node2 = d_sp_reduced[d_output_graph[
-            traccc::device::gbts_og_index(
-                traccc::device::gbts_consts::node2,
-                static_cast<unsigned int>(path.x), nConnectedEdges)]];
+            edge_size * static_cast<unsigned int>(path.x) +
+            gbts_consts::node2]];
         if (toggle) {
             if (!gbts_detail::kf_update(&state1, &state2, node2,
                                         seed_extraction_params)) {

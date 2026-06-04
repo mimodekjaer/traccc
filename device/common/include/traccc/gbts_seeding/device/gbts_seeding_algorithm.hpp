@@ -21,6 +21,10 @@
 #include "traccc/utils/memory_resource.hpp"
 #include "traccc/utils/messaging.hpp"
 
+// VecMem include(s).
+#include <vecmem/containers/data/vector_buffer.hpp>
+#include <vecmem/containers/vector.hpp>
+
 // System include(s).
 #include <cstdint>
 #include <memory>
@@ -95,8 +99,8 @@ class gbts_seeding_algorithm
         const collection_types<float4>::view& reducedSP;
         /// Output: per-layer spacepoint counts (atomically incremented)
         const collection_types<unsigned int>::view& layerCounts;
-        /// Output: GBTS layer index assigned to each spacepoint (or -1)
-        const collection_types<short>::view& spacepointsLayer;
+        /// Output: GBTS layer index assigned to each kept spacepoint
+        const collection_types<unsigned short>::view& spacepointsLayer;
         /// Size of the volume-to-layer map (for bounds checking)
         const unsigned long int volumeMapSize;
         /// Size of the surface-to-layer map (for bounds checking)
@@ -112,13 +116,12 @@ class gbts_seeding_algorithm
     virtual void count_sp_by_layer_kernel(
         const count_sp_by_layer_kernel_payload& payload) const = 0;
 
-    /// Payload for the bin_sp_combined_kernel function
+    /// Payload for the bin_sp_kernel function
     ///
-    /// Fuses the former bin_sp_by_layer + node_eta_binning + eta_phi_histo
-    /// stages: each spacepoint is read once and scattered into its layer slot,
-    /// its eta/phi bin indices are computed, and the (eta, phi) histogram is
-    /// bumped, all in a single pass.
-    struct bin_sp_combined_kernel_payload {
+    /// Each spacepoint is read once and scattered into its layer slot, its
+    /// eta/phi bin indices are computed, and the (eta, phi) histogram is bumped,
+    /// all in a single pass.
+    struct bin_sp_kernel_payload {
         /// Number of spacepoints in the event
         const unsigned int nSp;
         /// Number of phi bins per eta slice
@@ -130,7 +133,7 @@ class gbts_seeding_algorithm
         /// In/out: per-layer running write cursors (decremented as each SP lands)
         const collection_types<unsigned int>::view& layerCounts;
         /// GBTS layer assignment for each spacepoint
-        const collection_types<short>::const_view& spacepointsLayer;
+        const collection_types<unsigned short>::const_view& spacepointsLayer;
         /// Output: layer-ordered index back to the original spacepoint slot
         const collection_types<unsigned int>::view& original_sp_idx;
         /// Per-layer (first eta bin, number of eta bins) pair
@@ -145,12 +148,12 @@ class gbts_seeding_algorithm
         const collection_types<unsigned int>::view& eta_phi_histo;
     };
 
-    /// Fused spacepoint-binning kernel launcher
+    /// Spacepoint-binning kernel launcher
     ///
     /// @param payload The payload for the kernel
     ///
-    virtual void bin_sp_combined_kernel(
-        const bin_sp_combined_kernel_payload& payload) const = 0;
+    virtual void bin_sp_kernel(
+        const bin_sp_kernel_payload& payload) const = 0;
 
     /// Payload for the eta_phi_counting_kernel function
     struct eta_phi_counting_kernel_payload {
@@ -206,8 +209,10 @@ class gbts_seeding_algorithm
         const collection_types<unsigned int>::const_view& node_phi_index;
         /// In/out: per-(eta, phi) write cursor (atomically advanced)
         const collection_types<unsigned int>::view& phi_cusums;
-        /// Output: 5-tuple of geometry parameters per node, written in sorted order
-        const collection_types<float>::view& node_params;
+        /// Output: per-node (tau_min, tau_max, r, z), written in sorted order
+        const collection_types<float4>::view& node_params;
+        /// Output: per-node phi, written in sorted order
+        const collection_types<float>::view& node_phi;
         /// Output: per-sorted-slot original layer-ordered spacepoint index
         const collection_types<unsigned int>::view& node_index;
         /// Map from layer-ordered SP index to the original SP slot
@@ -231,8 +236,8 @@ class gbts_seeding_algorithm
         const unsigned int nEtaBins;
         /// Per-eta (begin, end) node range, as 2*nEtaBins flat ints
         const collection_types<unsigned int>::const_view& eta_bin_views;
-        /// Sorted 5-tuple geometry parameters per node (only r is read here)
-        const collection_types<float>::const_view& node_params;
+        /// Per-node (tau_min, tau_max, r, z) (only r is read here)
+        const collection_types<float4>::const_view& node_params;
         /// Output: per-eta (rmin, rmax) pair, flat (2*nEtaBins floats)
         const collection_types<float>::view& bin_rads;
     };
@@ -256,22 +261,18 @@ class gbts_seeding_algorithm
         const collection_types<unsigned int>::const_view& bin_pair_views;
         /// Per-bin-pair max delta-phi window for edge candidates
         const collection_types<float>::const_view& bin_pair_dphi;
-        /// Sorted 5-tuple geometry parameters per node
-        const collection_types<float>::const_view& node_params;
+        /// Per-node (tau_min, tau_max, r, z)
+        const collection_types<float4>::const_view& node_params;
+        /// Per-node phi
+        const collection_types<float>::const_view& node_phi;
         /// Edge-making geometric / kinematic cuts
         const gbts_edge_making_params edge_making_params;
         /// In/out: global atomic counter for the next edge slot to write
         unsigned int* nEdgesCounter;
         /// Output: (src, dst) node indices per edge
         const collection_types<uint2>::view& edge_nodes;
-        /// Output: per-edge exp(-eta) ( = sqrt(1+tau^2)-tau ) used by matching
-        const collection_types<gbts_edge_real_t>::view& edge_exp_eta;
-        /// Output: per-edge curvature (dphi / dr) used by matching
-        const collection_types<gbts_edge_real_t>::view& edge_curv;
-        /// Output: per-edge predicted phi at layer-2 radius (read by self side)
-        const collection_types<gbts_edge_real_t>::view& edge_phi_z;
-        /// Output: per-edge predicted phi at layer-1 radius (read by candidates)
-        const collection_types<gbts_edge_real_t>::view& edge_phi_w;
+        /// Output: packed per-edge [exp(-eta), curv, phi_z, phi_w] used by matching
+        const collection_types<gbts_edge4>::view& edge_params;
         /// Output: per-destination-node incoming-edge count (atomic)
         const collection_types<unsigned int>::view& num_outgoing_edges;
     };
@@ -310,14 +311,8 @@ class gbts_seeding_algorithm
         const unsigned int nMaxNei;
         /// Edge-matching pair cuts
         const gbts_edge_matching_params edge_matching_params;
-        /// Per-edge exp(-eta) ( = sqrt(1+tau^2)-tau ), from graph_edge_making
-        const collection_types<gbts_edge_real_t>::const_view& edge_exp_eta;
-        /// Per-edge curvature (dphi / dr), from graph_edge_making
-        const collection_types<gbts_edge_real_t>::const_view& edge_curv;
-        /// Per-edge predicted phi at layer-2 radius (self side reads this)
-        const collection_types<gbts_edge_real_t>::const_view& edge_phi_z;
-        /// Per-edge predicted phi at layer-1 radius (candidate side reads this)
-        const collection_types<gbts_edge_real_t>::const_view& edge_phi_w;
+        /// Packed per-edge [exp(-eta), curv, phi_z, phi_w], from graph_edge_making
+        const collection_types<gbts_edge4>::const_view& edge_params;
         /// (src, dst) node indices per edge
         const collection_types<uint2>::const_view& edge_nodes;
         /// Per-node prefix sum of incoming edges (used to locate candidates)
@@ -329,7 +324,7 @@ class gbts_seeding_algorithm
         /// Output: neighbour edge indices, nMaxNei entries per edge (flat)
         const collection_types<unsigned int>::view& neighbours;
         /// Output: per-edge "kept" flag, later compacted into a re-index
-        const collection_types<unsigned int>::view& reIndexer;
+        const collection_types<int>::view& reIndexer;
         /// In/out: global atomic counter of total accepted connections
         unsigned int* nConnectionsCounter;
     };
@@ -346,7 +341,7 @@ class gbts_seeding_algorithm
         /// Number of original edges
         const unsigned int nEdges;
         /// In/out: per-edge "kept" flag in, compact new index out
-        const collection_types<unsigned int>::view& reIndexer;
+        const collection_types<int>::view& reIndexer;
         /// In/out: global atomic counter of edges that survived re-indexing
         unsigned int* nConnectedEdgesCounter;
     };
@@ -364,8 +359,6 @@ class gbts_seeding_algorithm
         const unsigned int nEdges;
         /// Maximum number of neighbours retained per edge
         const unsigned int nMaxNei;
-        /// SoA stride of the output graph (= number of compacted edges)
-        const unsigned int nConnectedEdges;
         /// Sorted-slot to original spacepoint index map
         const collection_types<unsigned int>::const_view& orig_node_index;
         /// (src, dst) node indices per edge
@@ -375,9 +368,9 @@ class gbts_seeding_algorithm
         /// Neighbour edge indices per edge (nMaxNei per edge, flat)
         const collection_types<unsigned int>::const_view& neighbours;
         /// Old-edge to compacted-edge index map
-        const collection_types<unsigned int>::const_view& reIndexer;
-        /// Output: compacted graph in SoA column-major layout (stride =
-        /// nConnectedEdges). Columns: node1, node2, nNei, nei0..neiN-1.
+        const collection_types<int>::const_view& reIndexer;
+        /// Output: compacted graph in row-major layout; each edge owns a block
+        /// of edge_size = 2 + 1 + nMaxNei ints (node1, node2, nNei, nei0..neiN-1).
         const collection_types<unsigned int>::view& output_graph;
     };
 
@@ -400,13 +393,11 @@ class gbts_seeding_algorithm
         const collection_types<unsigned int>::const_view& output_graph;
         /// In/out: per-edge level ping-pong buffer (2 * nConnectedEdges bytes)
         const collection_types<unsigned char>::view& levels;
-        /// In/out: per-edge active-flag (holds the next iter index, or 0xFF
+        /// In/out: per-edge active-flag (holds the next iter index, or -1
         /// once the edge is no longer active).
-        const collection_types<unsigned char>::view& active_edges;
+        const collection_types<char>::view& active_edges;
         /// Output: longest outgoing-path summary per edge (length, next-edge)
         const collection_types<short2>::view& outgoing_paths;
-        /// Iteration index (0-based)
-        const unsigned char iter;
     };
 
     /// CCA (connected-components iteration) kernel launcher
@@ -455,16 +446,12 @@ class gbts_seeding_algorithm
 
     /// Payload for the fill_path_store_kernel function
     struct fill_path_store_kernel_payload {
-        /// Number of terminus edges (== number of CUDA tasks)
+        /// Number of terminus edges
         const unsigned int nTerminusEdges;
-        /// How many terminus edges each CUDA block walks
-        const unsigned int nTerminusPerBlock;
         /// Maximum number of neighbours retained per edge
         const unsigned int max_num_neighbours;
-        /// Total number of paths reachable from any terminus (upper bound)
+        /// Total number of paths
         const unsigned int nPaths;
-        /// SoA stride of the output graph (= number of compacted edges)
-        const unsigned int nConnectedEdges;
         /// In/out: per-path (edge index, parent path-store index or -1) entries
         const collection_types<int2>::view& path_store;
         /// Compacted graph (read for per-edge neighbour lookup)
@@ -490,8 +477,6 @@ class gbts_seeding_algorithm
         const unsigned int nTerminusEdges;
         /// Maximum number of neighbours retained per edge
         const unsigned int max_num_neighbours;
-        /// SoA stride of the output graph (= number of compacted edges)
-        const unsigned int nConnectedEdges;
         /// Minimum number of edges a path must have to be fit
         const unsigned char minLevel;
         /// Reduced (x, y, z, r) per original spacepoint
@@ -525,8 +510,6 @@ class gbts_seeding_algorithm
     struct reset_edge_bids_kernel_payload {
         /// Number of seed proposals
         const unsigned int nProps;
-        /// Bidding round index (-1 marks the first/initialisation pass)
-        const int round;
         /// Per-path (edge index, parent path-store index or -1) entries
         const collection_types<int2>::const_view& path_store;
         /// In/out: per-seed-proposal (path_store index, level)
@@ -558,6 +541,10 @@ class gbts_seeding_algorithm
         const collection_types<unsigned long long int>::view& edge_bids;
         /// In/out: per-seed-proposal ambiguity tag
         const collection_types<char>::view& seed_ambiguity;
+        /// In/out: global atomic counter of rejected proposals
+        unsigned int* nRejectedPropsCounter;
+        /// True on the first bidding round (folds the init pass)
+        const bool first_round;
     };
 
     /// Edge re-bid kernel launcher
@@ -573,11 +560,8 @@ class gbts_seeding_algorithm
         const unsigned int nProps;
         /// Number of accepted seeds (nProps - nRejectedProps)
         const unsigned int nSeeds;
-        /// (Legacy) per-edge row stride in the old row-major layout; unused
-        /// by the SoA reader but retained for ABI continuity.
+        /// Per-edge row stride in the output graph (= 2 + 1 + max_num_neighbours)
         const unsigned int edge_size;
-        /// SoA stride of the output graph (= number of compacted edges)
-        const unsigned int nConnectedEdges;
         /// Compacted graph from graph_compression
         const collection_types<unsigned int>::const_view& output_graph;
         /// Per-seed-proposal (path_store index, level)
@@ -605,8 +589,6 @@ class gbts_seeding_algorithm
         const unsigned int nSeeds;
         /// Maximum number of neighbours retained per edge
         const unsigned int max_num_neighbours;
-        /// SoA stride of the output graph (= number of compacted edges)
-        const unsigned int nConnectedEdges;
         /// Per-seed-proposal (path_store index, level)
         const collection_types<int2>::const_view& seed_proposals;
         /// Per-seed-proposal ambiguity tag
@@ -639,6 +621,66 @@ class gbts_seeding_algorithm
     virtual void sync() const = 0;
 
     private:
+    /// @name Pipeline stages
+    ///
+    /// The pipeline is split into three stage methods so that each stage's
+    /// transient device buffers are local and freed as soon as the stage
+    /// returns; only the cross-stage handles below survive between stages.
+    /// @{
+
+    /// Outputs of the node-making stage that are consumed downstream.
+    struct node_making_output {
+        /// Reduced (x, y, z, r) per original spacepoint (used by seed extraction)
+        collection_types<float4>::buffer reducedSP;
+        /// Per-node (tau_min, tau_max, r, z) (used by graph making)
+        collection_types<float4>::buffer node_params;
+        /// Per-node phi (used by graph making)
+        collection_types<float>::buffer node_phi;
+        /// Per-sorted-slot original spacepoint index (used by graph making)
+        collection_types<unsigned int>::buffer node_index;
+        /// Per-eta (rmin, rmax) pair, host (used by graph making)
+        collection_types<float>::host bin_rads;
+        /// Per-eta (begin, end) node ranges, host (used by graph making)
+        collection_types<unsigned int>::host eta_bin_views;
+        /// Number of GBTS nodes (0 == nothing to do)
+        unsigned int nNodes = 0;
+    };
+
+    /// Outputs of the graph-making stage that are consumed by seed extraction.
+    struct graph_making_output {
+        /// Compacted, row-major graph
+        collection_types<unsigned int>::buffer output_graph;
+        /// Number of edges that survived re-indexing (0 == nothing to do)
+        unsigned int nConnectedEdges = 0;
+    };
+
+    /// Stage 1: count, bin, sort and characterise nodes.
+    node_making_output make_nodes(
+        const edm::spacepoint_collection::const_view& spacepoints,
+        const edm::measurement_collection::const_view& measurements) const;
+
+    /// Stage 2: build, link, match and compress the edge graph. The per-node
+    /// buffers are taken by value so they are released when this stage returns.
+    graph_making_output make_graph(
+        collection_types<float4>::buffer node_params,
+        collection_types<float>::buffer node_phi,
+        collection_types<unsigned int>::buffer node_index,
+        const collection_types<float>::host& bin_rads,
+        const collection_types<unsigned int>::host& eta_bin_views,
+        const unsigned int nNodes,
+        collection_types<unsigned int>::buffer& counters_buf,
+        collection_types<unsigned int>::host& h_counters) const;
+
+    /// Stage 3: run the CCA, extract paths, fit and disambiguate into seeds.
+    edm::seed_collection::buffer extract_seeds(
+        collection_types<unsigned int>::buffer& output_graph,
+        collection_types<float4>::buffer& reducedSP,
+        const unsigned int nConnectedEdges, const unsigned int nSp,
+        collection_types<unsigned int>::buffer& counters_buf,
+        collection_types<unsigned int>::host& h_counters) const;
+
+    /// @}
+
     /// Internal data type
     struct data;
     /// Pointer to internal data

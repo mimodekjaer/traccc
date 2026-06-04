@@ -30,15 +30,12 @@ namespace traccc::device {
 /// @param[in]  d_num_neighbours_view        Accepted neighbour count per edge
 /// @param[in]  d_neighbours_view            Neighbour edge indices per edge
 /// @param[in]  d_reIndexer_view             Old-edge → compact-edge map
-/// @param[out] d_output_graph_view          Compact graph in SoA layout: one
-///                                          column per field (node1, node2,
-///                                          nNei, nei0..neiN-1), each column
-///                                          a contiguous array of stride
-///                                          nConnectedEdges entries.
+/// @param[out] d_output_graph_view          Compact graph in row-major layout:
+///                                          each edge owns a contiguous block of
+///                                          edge_size = 2 + 1 + nMaxNei ints
+///                                          ([node1, node2, nNei, nei0..neiN-1]).
 /// @param[in]  nEdges                       Number of original edges
 /// @param[in]  nMaxNei                      Maximum neighbours per edge
-/// @param[in]  nConnectedEdges              SoA column stride (= number of
-///                                          compacted edges)
 ///
 TRACCC_HOST_DEVICE
 inline void graph_compression(
@@ -47,10 +44,9 @@ inline void graph_compression(
     const collection_types<uint2>::const_view& d_edge_nodes_view,
     const collection_types<unsigned char>::const_view& d_num_neighbours_view,
     const collection_types<unsigned int>::const_view& d_neighbours_view,
-    const collection_types<unsigned int>::const_view& d_reIndexer_view,
+    const collection_types<int>::const_view& d_reIndexer_view,
     const collection_types<unsigned int>::view& d_output_graph_view,
-    const unsigned int nEdges, const unsigned int nMaxNei,
-    const unsigned int nConnectedEdges);
+    const unsigned int nEdges, const unsigned int nMaxNei);
 
 }  // namespace traccc::device
 

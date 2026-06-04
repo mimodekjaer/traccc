@@ -35,30 +35,28 @@ gbts_seeding_algorithm::gbts_seeding_algorithm(
 
 gbts_seeding_algorithm::~gbts_seeding_algorithm() = default;
 
-auto gbts_seeding_algorithm::operator()(
+// ===========================================================================
+// Stage 1: node making
+// ===========================================================================
+
+auto gbts_seeding_algorithm::make_nodes(
     const edm::spacepoint_collection::const_view& spacepoints,
     const edm::measurement_collection::const_view& measurements) const
-    -> output_type {
-
-    assert(m_data);
+    -> node_making_output {
 
     const gbts_seedfinder_config& cfg = m_data->m_config;
+    const unsigned int nSp = copy().get_size(spacepoints);
 
     // 0. Bin spacepoints by the mapping supplied to config.surfaceToLayerMap.
-    const unsigned int nSp = copy().get_size(spacepoints);
-    TRACCC_DEBUG("nSp " << nSp);
-    if (nSp == 0) {
-        TRACCC_WARNING("No spacepoints were found in the event");
-        return {0, mr().main};
-    }
-
-    collection_types<unsigned int>::buffer layerCounts_buf(cfg.nLayers + 1, mr().main);
+    collection_types<unsigned int>::buffer layerCounts_buf(cfg.nLayers + 1,
+                                                           mr().main);
     copy().memset(layerCounts_buf, 0)->ignore();
 
     collection_types<float4>::buffer reducedSP_buf(nSp, mr().main);
     copy().setup(reducedSP_buf)->ignore();
 
-    collection_types<short>::buffer spacepointsLayer_buf(nSp, mr().main);
+    collection_types<unsigned short>::buffer spacepointsLayer_buf(nSp,
+                                                                  mr().main);
     copy().setup(spacepointsLayer_buf)->ignore();
 
     collection_types<short>::buffer volumeToLayerMap_buf(
@@ -82,16 +80,15 @@ auto gbts_seeding_algorithm::operator()(
     collection_types<char>::buffer layerType_buf(cfg.nLayers, mr().main);
     copy().setup(layerType_buf)->ignore();
     copy()(vecmem::get_data(cfg.layerInfo.type), layerType_buf)->ignore();
-    count_sp_by_layer_kernel({nSp, spacepoints, measurements,
-                              volumeToLayerMap_buf, surfaceToLayerMap_buf,
-                              layerType_buf, reducedSP_buf, layerCounts_buf,
-                              spacepointsLayer_buf,
-                              cfg.volumeToLayerMap.size(), cfg.surfaceToLayerMap.size(),
-                              cfg.sp_counting_params});
-    sync();
+    count_sp_by_layer_kernel(
+        {nSp, spacepoints, measurements, volumeToLayerMap_buf,
+         surfaceToLayerMap_buf, layerType_buf, reducedSP_buf, layerCounts_buf,
+         spacepointsLayer_buf, cfg.volumeToLayerMap.size(),
+         cfg.surfaceToLayerMap.size(), cfg.sp_counting_params});
 
     // Prefix-sum layerCounts on host.
-    collection_types<unsigned int>::host layerCounts(cfg.nLayers + 1, mr().host);
+    collection_types<unsigned int>::host layerCounts(cfg.nLayers + 1,
+                                                     mr().host);
     copy()(vecmem::get_data(layerCounts_buf), layerCounts)->wait();
     for (unsigned int layer = 0; layer < cfg.nLayers; layer++) {
         layerCounts[layer + 1] += layerCounts[layer];
@@ -103,7 +100,7 @@ auto gbts_seeding_algorithm::operator()(
     TRACCC_DEBUG("nNodes " << nNodes);
     if (nNodes == 0) {
         TRACCC_WARNING("No nodes were found after spacepoint counting");
-        return {0, mr().main};
+        return node_making_output{};
     }
 
     collection_types<float4>::buffer sp_params_buf(nSp, mr().main);
@@ -113,45 +110,44 @@ auto gbts_seeding_algorithm::operator()(
 
     // 1. Fused binning: scatter spacepoints into layer-ordered slots, compute
     //    their eta/phi bin indices and fill the (eta, phi) histogram, all in a
-    //    single pass (replaces bin_sp_by_layer + node_eta_binning +
-    //    eta_phi_histo).
+    //    single pass.
     collection_types<std::pair<unsigned int, unsigned int>>::buffer
         layer_info_buf(cfg.nLayers, mr().main);
     copy().setup(layer_info_buf)->ignore();
     copy()(vecmem::get_data(cfg.layerInfo.info), layer_info_buf)->ignore();
 
-    collection_types<std::pair<float, float>>::buffer layer_geo_buf(
-        cfg.nLayers, mr().main);
+    collection_types<std::pair<float, float>>::buffer layer_geo_buf(cfg.nLayers,
+                                                                    mr().main);
     copy().setup(layer_geo_buf)->ignore();
     copy()(vecmem::get_data(cfg.layerInfo.geo), layer_geo_buf)->ignore();
 
-    collection_types<unsigned int>::buffer node_phi_index_buf(nNodes, mr().main);
+    collection_types<unsigned int>::buffer node_phi_index_buf(nNodes,
+                                                              mr().main);
     copy().setup(node_phi_index_buf)->ignore();
 
-    collection_types<unsigned int>::buffer node_eta_index_buf(nNodes, mr().main);
+    collection_types<unsigned int>::buffer node_eta_index_buf(nNodes,
+                                                              mr().main);
     copy().setup(node_eta_index_buf)->ignore();
 
     const unsigned int hist_size = cfg.n_eta_bins * cfg.n_phi_bins;
-    collection_types<unsigned int>::buffer eta_phi_histo_buf(hist_size, mr().main);
+    collection_types<unsigned int>::buffer eta_phi_histo_buf(hist_size,
+                                                             mr().main);
     copy().setup(eta_phi_histo_buf)->ignore();
     copy().memset(eta_phi_histo_buf, 0)->ignore();
     collection_types<unsigned int>::buffer phi_cusums_buf(hist_size, mr().main);
     copy().setup(phi_cusums_buf)->ignore();
 
-    bin_sp_combined_kernel({nSp, cfg.n_phi_bins, sp_params_buf, reducedSP_buf,
-                            layerCounts_buf, spacepointsLayer_buf,
-                            original_sp_idx_buf, layer_info_buf, layer_geo_buf,
-                            node_eta_index_buf, node_phi_index_buf,
-                            eta_phi_histo_buf});
-    sync();
+    bin_sp_kernel({nSp, cfg.n_phi_bins, sp_params_buf, reducedSP_buf,
+                   layerCounts_buf, spacepointsLayer_buf, original_sp_idx_buf,
+                   layer_info_buf, layer_geo_buf, node_eta_index_buf,
+                   node_phi_index_buf, eta_phi_histo_buf});
 
     collection_types<unsigned int>::buffer eta_node_counter_buf(cfg.n_eta_bins,
-                                                               mr().main);
+                                                                mr().main);
     copy().setup(eta_node_counter_buf)->ignore();
 
     eta_phi_counting_kernel({cfg.n_eta_bins, cfg.n_phi_bins, eta_phi_histo_buf,
                              eta_node_counter_buf, phi_cusums_buf});
-    sync();
 
     collection_types<unsigned int>::host eta_sums(cfg.n_eta_bins, mr().host);
     copy()(vecmem::get_data(eta_node_counter_buf), eta_sums)->wait();
@@ -160,7 +156,8 @@ auto gbts_seeding_algorithm::operator()(
     }
     copy()(vecmem::get_data(eta_sums), eta_node_counter_buf)->wait();
 
-    collection_types<unsigned int>::host eta_bin_views(2 * cfg.n_eta_bins, mr().host);
+    collection_types<unsigned int>::host eta_bin_views(2 * cfg.n_eta_bins,
+                                                       mr().host);
     for (unsigned int view_idx = 0; view_idx < cfg.n_eta_bins; view_idx++) {
         const unsigned int pos = 2 * view_idx;
         eta_bin_views[pos] = (view_idx == 0) ? 0 : eta_sums[view_idx - 1];
@@ -169,10 +166,11 @@ auto gbts_seeding_algorithm::operator()(
 
     eta_phi_prefix_sum_kernel({cfg.n_eta_bins, cfg.n_phi_bins,
                                eta_node_counter_buf, phi_cusums_buf});
-    sync();
 
-    collection_types<float>::buffer node_params_buf(5 * nNodes, mr().main);
+    collection_types<float4>::buffer node_params_buf(nNodes, mr().main);
     copy().setup(node_params_buf)->ignore();
+    collection_types<float>::buffer node_phi_buf(nNodes, mr().main);
+    copy().setup(node_phi_buf)->ignore();
     collection_types<unsigned int>::buffer node_index_buf(nNodes, mr().main);
     copy().setup(node_index_buf)->ignore();
 
@@ -189,12 +187,11 @@ auto gbts_seeding_algorithm::operator()(
 
     node_sorting_kernel({nNodes, cfg.n_phi_bins, sp_params_buf,
                          node_eta_index_buf, node_phi_index_buf, phi_cusums_buf,
-                         node_params_buf, node_index_buf, original_sp_idx_buf,
-                         tau_lut_buf, cfg.node_sorting});
-    sync();
+                         node_params_buf, node_phi_buf, node_index_buf,
+                         original_sp_idx_buf, tau_lut_buf, cfg.node_sorting});
 
     collection_types<unsigned int>::buffer eta_bin_views_buf(2 * cfg.n_eta_bins,
-                                                    mr().main);
+                                                             mr().main);
     copy().setup(eta_bin_views_buf)->ignore();
     copy()(vecmem::get_data(eta_bin_views), eta_bin_views_buf)->wait();
 
@@ -203,10 +200,35 @@ auto gbts_seeding_algorithm::operator()(
 
     minmax_rad_kernel({cfg.n_eta_bins, eta_bin_views_buf, node_params_buf,
                        bin_rads_buf});
-    sync();
 
     collection_types<float>::host bin_rads(2 * cfg.n_eta_bins, mr().host);
     copy()(vecmem::get_data(bin_rads_buf), bin_rads)->wait();
+
+    return node_making_output{std::move(reducedSP_buf),
+                              std::move(node_params_buf),
+                              std::move(node_phi_buf),
+                              std::move(node_index_buf),
+                              std::move(bin_rads),
+                              std::move(eta_bin_views),
+                              nNodes};
+}
+
+// ===========================================================================
+// Stage 2: graph making
+// ===========================================================================
+
+auto gbts_seeding_algorithm::make_graph(
+    collection_types<float4>::buffer node_params,
+    collection_types<float>::buffer node_phi,
+    collection_types<unsigned int>::buffer node_index,
+    const collection_types<float>::host& bin_rads,
+    const collection_types<unsigned int>::host& eta_bin_views,
+    const unsigned int nNodes,
+    collection_types<unsigned int>::buffer& counters_buf,
+    collection_types<unsigned int>::host& h_counters) const -> graph_making_output {
+
+    const gbts_seedfinder_config& cfg = m_data->m_config;
+    unsigned int* d_counters = counters_buf.ptr();
 
     // 2. Prepare input for the graph-making part of the code.
     int int_nBinPairs = 0;
@@ -222,7 +244,8 @@ auto gbts_seeding_algorithm::operator()(
     }
     const unsigned int nBinPairs = static_cast<unsigned int>(int_nBinPairs);
 
-    collection_types<unsigned int>::host bin_pair_views(4 * nBinPairs, mr().host);
+    collection_types<unsigned int>::host bin_pair_views(4 * nBinPairs,
+                                                        mr().host);
     collection_types<float>::host bin_pair_dphi(nBinPairs, mr().host);
 
     unsigned int pairIdx = 0;
@@ -244,11 +267,9 @@ auto gbts_seeding_algorithm::operator()(
 
         float deltaPhi = cfg.dphi_window.min_delta_phi +
                          cfg.dphi_window.dphi_coeff * maxDeltaR;
-        if (maxDeltaR < 60) {
-            deltaPhi =
-                cfg.dphi_window.min_delta_phi_low_dr +
-                cfg.dphi_window.dphi_coeff_low_dr *
-                    maxDeltaR;
+        if (maxDeltaR < cfg.dphi_window.low_dr_threshold) {
+            deltaPhi = cfg.dphi_window.min_delta_phi_low_dr +
+                       cfg.dphi_window.dphi_coeff_low_dr * maxDeltaR;
         }
 
         unsigned int currBegin_bin1 = begin_bin1;
@@ -281,11 +302,11 @@ auto gbts_seeding_algorithm::operator()(
     TRACCC_DEBUG("nUsedBinPairs " << nUsedBinPairs);
     if (nUsedBinPairs == 0) {
         TRACCC_WARNING("No bin pairs were used for edge finding");
-        return {0, mr().main};
+        return graph_making_output{};
     }
 
     collection_types<unsigned int>::buffer bin_pair_views_buf(4 * nUsedBinPairs,
-                                                     mr().main);
+                                                              mr().main);
     copy().setup(bin_pair_views_buf)->ignore();
     copy()(vecmem::get_data(bin_pair_views), bin_pair_views_buf)->ignore();
 
@@ -293,95 +314,35 @@ auto gbts_seeding_algorithm::operator()(
     copy().setup(bin_pair_dphi_buf)->ignore();
     copy()(vecmem::get_data(bin_pair_dphi), bin_pair_dphi_buf)->ignore();
 
-    // Named indices into the flat counter buffer.  Each counter is documented
-    // at the point of declaration so that it is clear which kernel writes/reads
-    // which slot.
-    enum gbts_counter_idx : unsigned int {
-        // Number of edges produced by device::graph_edge_making.
-        k_nEdges = 0,
-        // Number of edge-to-edge connections accumulated by
-        // device::graph_edge_matching.
-        k_nConnections,
-        // Number of edges that survive the re-indexing step in
-        // device::edge_re_indexing (i.e. edges with at least one connection).
-        k_nConnectedEdges,
-        // Total number of paths reachable from any terminus edge, accumulated
-        // by device::count_terminus_edges.
-        k_nPaths,
-        // Running size of the path store.  Initialised to the number of
-        // terminus edges by device::count_terminus_edges and grown further by
-        // device::fill_path_store; device::fit_segments reads it as the upper
-        // bound on path indices.
-        k_nPathStoreSize,
-        // Number of seed proposals produced by device::fit_segments.
-        k_nProps,
-        // Number of seed proposals rejected by device::reset_edge_bids.
-        k_nRejectedProps,
-        // Total counter slots.
-        k_nCounters
-    };
-
-    // 10 named counters held in a single device buffer; one memset zeros all.
-    collection_types<unsigned int>::buffer counters_buf(k_nCounters, mr().main);
-    copy().setup(counters_buf)->ignore();
-    copy().memset(counters_buf, 0)->ignore();
-    // Raw device pointer used to bind references to individual counter slots.
-    unsigned int* d_counters = counters_buf.ptr();
-    // Host-side mirror, pulled in one transfer at each checkpoint.
-    vecmem::vector<unsigned int> h_counters(
-        k_nCounters, mr().host ? mr().host : &(mr().main));
-
     // 2. Find edges between spacepoint pairs.
     const unsigned int nMaxEdges = cfg.max_edges_factor * nNodes;
-    // SoA edge-parameter buffers: each per-edge field lives in its own float
-    // buffer so the matcher can early-exit a cut without paying for the
-    // unread fields. Same total bytes as the prior packed float4 buffer.
-    collection_types<gbts_edge_real_t>::buffer edge_exp_eta_buf(nMaxEdges,
-                                                               mr().main);
-    copy().setup(edge_exp_eta_buf)->ignore();
-    collection_types<gbts_edge_real_t>::buffer edge_curv_buf(nMaxEdges,
-                                                            mr().main);
-    copy().setup(edge_curv_buf)->ignore();
-    collection_types<gbts_edge_real_t>::buffer edge_phi_z_buf(nMaxEdges,
-                                                             mr().main);
-    copy().setup(edge_phi_z_buf)->ignore();
-    collection_types<gbts_edge_real_t>::buffer edge_phi_w_buf(nMaxEdges,
-                                                             mr().main);
-    copy().setup(edge_phi_w_buf)->ignore();
+    // Packed per-edge parameter buffer ([exp(-eta), curv, phi_z, phi_w]).
+    collection_types<gbts_edge4>::buffer edge_params_buf(nMaxEdges, mr().main);
+    copy().setup(edge_params_buf)->ignore();
     collection_types<uint2>::buffer edge_nodes_buf(nMaxEdges, mr().main);
     copy().setup(edge_nodes_buf)->ignore();
-    collection_types<unsigned int>::buffer num_incoming_edges_buf(nNodes + 1, mr().main);
+    collection_types<unsigned int>::buffer num_incoming_edges_buf(nNodes + 1,
+                                                                  mr().main);
     copy().setup(num_incoming_edges_buf)->ignore();
     copy().memset(num_incoming_edges_buf, 0)->ignore();
 
-    graph_edge_making_kernel({nUsedBinPairs,
-                              nMaxEdges,
-                              cfg.n_phi_bins,
-                              bin_pair_views_buf,
-                              bin_pair_dphi_buf,
-                              node_params_buf,
-                              cfg.edge_making,
-                              d_counters + k_nEdges,
-                              edge_nodes_buf,
-                              edge_exp_eta_buf,
-                              edge_curv_buf,
-                              edge_phi_z_buf,
-                              edge_phi_w_buf,
-                              num_incoming_edges_buf});
-    sync();
+    graph_edge_making_kernel(
+        {nUsedBinPairs, nMaxEdges, cfg.n_phi_bins, bin_pair_views_buf,
+         bin_pair_dphi_buf, node_params, node_phi, cfg.edge_making,
+         d_counters + gbts_counter::nEdges, edge_nodes_buf, edge_params_buf,
+         num_incoming_edges_buf});
 
-    // Read back the number of edges produced (and the rest of the counters in
-    // the same transfer).
+    // Read back the number of edges produced.
     copy()(counters_buf, h_counters)->wait();
 
-    unsigned int nEdges = h_counters[k_nEdges];
+    unsigned int nEdges = h_counters[gbts_counter::nEdges];
     TRACCC_DEBUG("Created " << nEdges << " edges with a cap of " << nMaxEdges);
     if (nEdges > nMaxEdges) {
         TRACCC_ERROR("Number of edges exceeds the maximum allowed, Removing "
                      << nEdges - nMaxEdges << " edges");
         nEdges = nMaxEdges;
     } else if (nEdges == 0) {
-        return {0, mr().main};
+        return graph_making_output{};
     }
 
     collection_types<unsigned int>::host cusum(nNodes + 1, mr().host);
@@ -395,9 +356,8 @@ auto gbts_seeding_algorithm::operator()(
     collection_types<unsigned int>::buffer edge_links_buf(nEdges, mr().main);
     copy().setup(edge_links_buf)->ignore();
 
-    graph_edge_linking_kernel({nEdges, edge_nodes_buf, edge_links_buf,
-                               num_incoming_edges_buf});
-    sync();
+    graph_edge_linking_kernel(
+        {nEdges, edge_nodes_buf, edge_links_buf, num_incoming_edges_buf});
 
     // 4. Edge matching to create edge-to-edge connections.
     collection_types<unsigned char>::buffer num_neighbours_buf(nEdges,
@@ -405,46 +365,38 @@ auto gbts_seeding_algorithm::operator()(
     copy().setup(num_neighbours_buf)->ignore();
     copy().memset(num_neighbours_buf, 0)->ignore();
 
-    collection_types<unsigned int>::buffer reIndexer_buf(nEdges, mr().main);
+    collection_types<int>::buffer reIndexer_buf(nEdges, mr().main);
     copy().setup(reIndexer_buf)->ignore();
-    copy().memset(reIndexer_buf, UINT8_MAX)->ignore();
+    // Byte-fill 0xFF -> int -1, the "edge not kept" sentinel checked by
+    // edge_re_indexing / graph_compression.
+    copy().memset(reIndexer_buf, 0xFF)->ignore();
 
     collection_types<unsigned int>::buffer neighbours_buf(
         cfg.max_num_neighbours * nEdges, mr().main);
     copy().setup(neighbours_buf)->ignore();
     copy().memset(neighbours_buf, 0)->ignore();
 
-    graph_edge_matching_kernel({nEdges,
-                                cfg.max_num_neighbours,
-                                cfg.edge_matching,
-                                edge_exp_eta_buf,
-                                edge_curv_buf,
-                                edge_phi_z_buf,
-                                edge_phi_w_buf,
-                                edge_nodes_buf,
-                                num_incoming_edges_buf,
-                                edge_links_buf,
-                                num_neighbours_buf,
-                                neighbours_buf,
-                                reIndexer_buf,
-                                d_counters + k_nConnections});
-    sync();
+    graph_edge_matching_kernel(
+        {nEdges, cfg.max_num_neighbours, cfg.edge_matching, edge_params_buf,
+         edge_nodes_buf, num_incoming_edges_buf, edge_links_buf,
+         num_neighbours_buf, neighbours_buf, reIndexer_buf,
+         d_counters + gbts_counter::nConnections});
 
     // 5. Edge re-indexing to keep only edges involved in any connection.
     edge_re_indexing_kernel(
-        {nEdges, reIndexer_buf, d_counters + k_nConnectedEdges});
-    sync();
+        {nEdges, reIndexer_buf, d_counters + gbts_counter::nConnectedEdges});
 
     copy()(counters_buf, h_counters)->wait();
 
-    const unsigned int nConnections = h_counters[k_nConnections];
-    const unsigned int nConnectedEdges = h_counters[k_nConnectedEdges];
+    const unsigned int nConnections = h_counters[gbts_counter::nConnections];
+    const unsigned int nConnectedEdges =
+        h_counters[gbts_counter::nConnectedEdges];
     TRACCC_DEBUG("created " << nConnections << " edge links, found "
                             << nConnectedEdges
                             << " connected edges for seed extraction");
     if (nConnectedEdges == 0) {
         TRACCC_WARNING("No connected edges were found");
-        return {0, mr().main};
+        return graph_making_output{};
     }
 
     const unsigned int nIntsPerEdge = 2 + 1 + cfg.max_num_neighbours;
@@ -452,60 +404,71 @@ auto gbts_seeding_algorithm::operator()(
         nConnectedEdges * nIntsPerEdge, mr().main);
     copy().setup(output_graph_buf)->ignore();
 
-    graph_compression_kernel({nEdges, cfg.max_num_neighbours, nConnectedEdges,
-                              node_index_buf, edge_nodes_buf,
-                              num_neighbours_buf, neighbours_buf, reIndexer_buf,
-                              output_graph_buf});
-    sync();
+    graph_compression_kernel({nEdges, cfg.max_num_neighbours, node_index,
+                              edge_nodes_buf, num_neighbours_buf, neighbours_buf,
+                              reIndexer_buf, output_graph_buf});
+
+    return graph_making_output{std::move(output_graph_buf), nConnectedEdges};
+}
+
+// ===========================================================================
+// Stage 3: seed extraction
+// ===========================================================================
+
+auto gbts_seeding_algorithm::extract_seeds(
+    collection_types<unsigned int>::buffer& output_graph,
+    collection_types<float4>::buffer& reducedSP,
+    const unsigned int nConnectedEdges, const unsigned int nSp,
+    collection_types<unsigned int>::buffer& counters_buf,
+    collection_types<unsigned int>::host& h_counters) const
+    -> edm::seed_collection::buffer {
+
+    const gbts_seedfinder_config& cfg = m_data->m_config;
+    unsigned int* d_counters = counters_buf.ptr();
 
     // 6. Find longest segments with CCA.
-    // active_edges is the per-edge "next iter index" flag: holds `iter` while
-    // the edge is active in iteration `iter`, and 0xFF once it settles. A
-    // single byte is sufficient because max_cca_iter <= 15.
-    collection_types<unsigned char>::buffer active_edges_buf(nConnectedEdges,
-                                                             mr().main);
+    // active_edges is the per-edge "next iter index" flag: it holds `iter`
+    // while the edge is active in iteration `iter`, and -1 once it settles.
+    // Iteration 0 writes every entry before any later iteration reads it, so
+    // no initialisation is required.
+    collection_types<char>::buffer active_edges_buf(nConnectedEdges, mr().main);
     copy().setup(active_edges_buf)->ignore();
-    copy().memset(active_edges_buf, 0xFF)->ignore();
 
-    collection_types<unsigned char>::buffer levels_buf(2 * nConnectedEdges, mr().main);
+    collection_types<unsigned char>::buffer levels_buf(2 * nConnectedEdges,
+                                                       mr().main);
     copy().setup(levels_buf)->ignore();
+    // Initialise to 1 so a level counts the maximum number of edge segments
+    // for a seed originating at the edge.
     copy().memset(levels_buf, 0x1)->ignore();
 
     collection_types<short2>::buffer outgoing_paths_buf(nConnectedEdges,
                                                         mr().main);
-    copy().setup(outgoing_paths_buf)->wait();
+    copy().setup(outgoing_paths_buf)->ignore();
 
-    // Seed the CCA "load" counter (A) with the initial number of active edges.
-    // Only this one slot is written; the rest of the device counters keep the
-    // values they already had.
-    for (char unsigned iter = 0;
-         iter < traccc::device::gbts_consts::max_cca_iter; ++iter) {
-        cca_iteration_kernel({nConnectedEdges, cfg.max_num_neighbours,
-                                cfg.minLevel, output_graph_buf, levels_buf,
-                                active_edges_buf, outgoing_paths_buf, iter});
-        sync();
-    }
+    // The CCA relaxation loop (max_cca_iter iterations) is driven inside the
+    // launcher.
+    cca_iteration_kernel({nConnectedEdges, cfg.max_num_neighbours, cfg.minLevel,
+                          output_graph, levels_buf, active_edges_buf,
+                          outgoing_paths_buf});
 
     count_terminus_edges_kernel({nConnectedEdges, outgoing_paths_buf,
-                                 d_counters + k_nPaths,
-                                 d_counters + k_nPathStoreSize});
-    sync();
+                                 d_counters + gbts_counter::nPaths,
+                                 d_counters + gbts_counter::nTerminusEdges});
 
     copy()(counters_buf, h_counters)->wait();
 
-    const unsigned int nPaths = h_counters[k_nPaths];
-    const unsigned int nTerminusEdges = h_counters[k_nPathStoreSize];
+    const unsigned int nPaths = h_counters[gbts_counter::nPaths];
+    const unsigned int nTerminusEdges = h_counters[gbts_counter::nTerminusEdges];
     if (nTerminusEdges == 0) {
         TRACCC_WARNING("No terminus edges were found");
         return {0, mr().main};
     }
-    const unsigned int pathsPerTerminus = 1 + (nPaths - 1) / nTerminusEdges;
 
     TRACCC_DEBUG(nPaths << " size of path store | nTerminusEdges "
                         << nTerminusEdges);
 
-    collection_types<int2>::buffer path_store_buf(
-        nPaths + nTerminusEdges, mr().main);
+    collection_types<int2>::buffer path_store_buf(nPaths + nTerminusEdges,
+                                                  mr().main);
     copy().setup(path_store_buf)->ignore();
     collection_types<int2>::buffer seed_proposals_buf(nPaths, mr().main);
     copy().setup(seed_proposals_buf)->ignore();
@@ -520,56 +483,47 @@ auto gbts_seeding_algorithm::operator()(
     add_terminus_to_path_store_kernel(
         {nConnectedEdges, path_store_buf, outgoing_paths_buf});
 
-    constexpr unsigned int fill_block_threads = 128;
-    const unsigned int terminusPerBlock = std::min(
-        fill_block_threads,
-        1 + (gbts_consts::live_path_buffer - 1) / pathsPerTerminus);
-
-    fill_path_store_kernel({nTerminusEdges, terminusPerBlock,
-                            cfg.max_num_neighbours,
-                            nPaths + nTerminusEdges, nConnectedEdges,
-                            path_store_buf, output_graph_buf, levels_buf,
-                            d_counters + k_nPathStoreSize});
+    fill_path_store_kernel({nTerminusEdges, cfg.max_num_neighbours, nPaths,
+                            path_store_buf, output_graph, levels_buf,
+                            d_counters + gbts_counter::nTerminusEdges});
 
     fit_segments_kernel({nPaths, nTerminusEdges, cfg.max_num_neighbours,
-                         nConnectedEdges, cfg.minLevel, reducedSP_buf,
-                         output_graph_buf, path_store_buf, seed_proposals_buf,
-                         edge_bids_buf, seed_ambiguity_buf,
-                         d_counters + k_nPathStoreSize,
-                         d_counters + k_nProps,
+                         cfg.minLevel, reducedSP, output_graph, path_store_buf,
+                         seed_proposals_buf, edge_bids_buf, seed_ambiguity_buf,
+                         d_counters + gbts_counter::nTerminusEdges,
+                         d_counters + gbts_counter::nProps,
                          cfg.seed_extraction_params});
 
     copy()(counters_buf, h_counters)->wait();
 
-    const unsigned int nProps = h_counters[k_nProps];
+    const unsigned int nProps = h_counters[gbts_counter::nProps];
     TRACCC_DEBUG("nProps " << nProps);
     if (nProps == 0) {
         TRACCC_WARNING("No seed proposals were found");
         return {0, mr().main};
     }
 
-    reset_edge_bids_kernel(
-        {nProps, -1, path_store_buf, seed_proposals_buf, edge_bids_buf,
-         seed_ambiguity_buf, d_counters + k_nRejectedProps});
-
+    // 7. Disambiguate seeds through repeated seed-vs-edge bidding rounds.
     for (unsigned int round = 0; round < cfg.edge_bidding_rounds; ++round) {
         copy().memset(edge_bids_buf, 0)->ignore();
 
-        seeds_rebid_for_edges_kernel({nProps, path_store_buf,
-                                      seed_proposals_buf, edge_bids_buf,
-                                      seed_ambiguity_buf});
+        seeds_rebid_for_edges_kernel(
+            {nProps, path_store_buf, seed_proposals_buf, edge_bids_buf,
+             seed_ambiguity_buf, d_counters + gbts_counter::nRejected,
+             round == 0u});
 
         reset_edge_bids_kernel(
-            {nProps, static_cast<int>(round), path_store_buf, seed_proposals_buf,
-             edge_bids_buf, seed_ambiguity_buf, d_counters + k_nRejectedProps});
+            {nProps, path_store_buf, seed_proposals_buf, edge_bids_buf,
+             seed_ambiguity_buf, d_counters + gbts_counter::nRejected});
     }
 
     copy()(counters_buf, h_counters)->wait();
-    const unsigned int nRejectedProps = h_counters[k_nRejectedProps];
-    const unsigned int nSeeds = (nRejectedProps >= nProps) ? 0u : nProps - nRejectedProps;
-    
+    const unsigned int nRejectedProps = h_counters[gbts_counter::nRejected];
+    const unsigned int nSeeds =
+        (nRejectedProps >= nProps) ? 0u : nProps - nRejectedProps;
+
     TRACCC_DEBUG("Rejected " << nRejectedProps << " out of " << nProps
-                        << " seed proposals");
+                             << " seed proposals");
     if (nSeeds == 0) {
         TRACCC_WARNING("All seed proposals were rejected");
         return {0, mr().main};
@@ -581,26 +535,65 @@ auto gbts_seeding_algorithm::operator()(
     copy().setup(output_seeds)->wait();
 
     collection_types<unsigned long long int>::buffer hit_bids_buf(nSp,
-                                                                       mr().main);
+                                                                  mr().main);
     copy().setup(hit_bids_buf)->ignore();
     copy().memset(hit_bids_buf, 0)->wait();
 
     const unsigned int edge_size = 1u + 2u + cfg.max_num_neighbours;
-    seeds_bid_for_hits_kernel({nProps, nSeeds, edge_size, nConnectedEdges,
-                               output_graph_buf, seed_proposals_buf,
-                               path_store_buf, seed_ambiguity_buf,
-                               hit_bids_buf});
+    seeds_bid_for_hits_kernel({nProps, nSeeds, edge_size, output_graph,
+                               seed_proposals_buf, path_store_buf,
+                               seed_ambiguity_buf, hit_bids_buf});
 
     gbts_seed_conversion_kernel({nProps, nSeeds, cfg.max_num_neighbours,
-                                 nConnectedEdges, seed_proposals_buf,
-                                 seed_ambiguity_buf, path_store_buf,
-                                 output_graph_buf, reducedSP_buf, output_seeds,
-                                 hit_bids_buf, cfg.seed_ambi_params});
-    sync();
+                                 seed_proposals_buf, seed_ambiguity_buf,
+                                 path_store_buf, output_graph, reducedSP,
+                                 output_seeds, hit_bids_buf,
+                                 cfg.seed_ambi_params});
 
     const unsigned int outputSeeds = copy().get_size(output_seeds);
     TRACCC_DEBUG("GBTS found " << outputSeeds << " seeds");
     return output_seeds;
+}
+
+// ===========================================================================
+// Driver
+// ===========================================================================
+
+auto gbts_seeding_algorithm::operator()(
+    const edm::spacepoint_collection::const_view& spacepoints,
+    const edm::measurement_collection::const_view& measurements) const
+    -> output_type {
+
+    assert(m_data);
+
+    const unsigned int nSp = copy().get_size(spacepoints);
+    TRACCC_DEBUG("nSp " << nSp);
+    if (nSp == 0) {
+        TRACCC_WARNING("No spacepoints were found in the event");
+        return {0, mr().main};
+    }
+
+    // Stage 1: nodes. Transient binning buffers die when make_nodes returns.
+    node_making_output nodes = make_nodes(spacepoints, measurements);
+
+    // Named counters shared by the graph-making and seed-extraction stages.
+    collection_types<unsigned int>::buffer counters_buf(gbts_counter::nCounters,
+                                                        mr().main);
+    copy().setup(counters_buf)->ignore();
+    copy().memset(counters_buf, 0)->ignore();
+    collection_types<unsigned int>::host h_counters(
+        gbts_counter::nCounters, mr().host ? mr().host : &(mr().main));
+
+    // Stage 2: graph. The per-node buffers are moved in so they are released
+    // when make_graph returns, along with all the edge/link transients.
+    graph_making_output graph =
+        make_graph(std::move(nodes.node_params), std::move(nodes.node_phi),
+                   std::move(nodes.node_index), nodes.bin_rads,
+                   nodes.eta_bin_views, nodes.nNodes, counters_buf, h_counters);
+
+    // Stage 3: seed extraction.
+    return extract_seeds(graph.output_graph, nodes.reducedSP,
+                         graph.nConnectedEdges, nSp, counters_buf, h_counters);
 }
 
 }  // namespace traccc::device

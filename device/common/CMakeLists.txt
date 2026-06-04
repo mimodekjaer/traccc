@@ -68,8 +68,8 @@ traccc_add_library( traccc_device_common device_common
    # GBTS seed finding code.
    "include/traccc/gbts_seeding/device/count_sp_by_layer.hpp"
    "include/traccc/gbts_seeding/device/impl/count_sp_by_layer.ipp"
-   "include/traccc/gbts_seeding/device/bin_sp_combined.hpp"
-   "include/traccc/gbts_seeding/device/impl/bin_sp_combined.ipp"
+   "include/traccc/gbts_seeding/device/bin_sp.hpp"
+   "include/traccc/gbts_seeding/device/impl/bin_sp.ipp"
    "include/traccc/gbts_seeding/device/eta_phi_counting.hpp"
    "include/traccc/gbts_seeding/device/impl/eta_phi_counting.ipp"
    "include/traccc/gbts_seeding/device/eta_phi_prefix_sum.hpp"
@@ -105,6 +105,7 @@ traccc_add_library( traccc_device_common device_common
    "include/traccc/gbts_seeding/device/seeds_bid_for_hits.hpp"
    "include/traccc/gbts_seeding/device/impl/seeds_bid_for_hits.ipp"
    "include/traccc/gbts_seeding/device/add_seed_proposal.hpp"
+   "include/traccc/gbts_seeding/device/impl/add_seed_proposal.ipp"
    "include/traccc/gbts_seeding/device/gbts_seed_conversion.hpp"
    "include/traccc/gbts_seeding/device/impl/gbts_seed_conversion.ipp"
    "include/traccc/gbts_seeding/device/gbts_seeding_algorithm.hpp"

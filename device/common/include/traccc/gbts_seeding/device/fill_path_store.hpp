@@ -10,6 +10,7 @@
 // Project include(s).
 #include "traccc/definitions/qualifiers.hpp"
 #include "traccc/device/concepts/barrier.hpp"
+#include "traccc/device/concepts/thread_id.hpp"
 #include "traccc/edm/container.hpp"
 #include "traccc/gbts_seeding/gbts_types.hpp"
 
@@ -23,9 +24,7 @@ namespace traccc::device {
 /// path store via nPathStoreSizeCounter, and continues until all paths
 /// reach the graph boundary or until the frontier is empty.
 ///
-/// @param[in]  blockIndex                CUDA block index
-/// @param[in]  threadIndex               CUDA thread index in block
-/// @param[in]  blockSize                 CUDA block size
+/// @param[in]  thread_id                 Thread/block identifier (one block/task)
 /// @param[in]  barrier                   Block-wide barrier
 /// @param[in,out] live_paths             Shared-mem frontier of in-flight paths
 /// @param[in,out] n_live_paths           Shared-mem frontier size
@@ -37,20 +36,17 @@ namespace traccc::device {
 /// @param[in]  nTerminusPerBlock         Terminus edges processed per block
 /// @param[in]  max_num_neighbours        Maximum neighbours per edge
 /// @param[in]  nPaths                    Upper bound on the number of paths
-/// @param[in]  nConnectedEdges           SoA stride of the output graph
 ///
-template <concepts::barrier barrier_t>
+template <concepts::thread_id1 thread_id_t, concepts::barrier barrier_t>
 TRACCC_HOST_DEVICE inline void fill_path_store(
-    const unsigned int blockIndex, const unsigned int threadIndex,
-    const unsigned int blockSize, const barrier_t& barrier,
+    const thread_id_t& thread_id, const barrier_t& barrier,
     traccc::uint2* live_paths, int& n_live_paths,
     collection_types<int2>::view d_path_store_view,
     const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<unsigned char>::const_view& d_levels_view,
     unsigned int& nPathStoreSizeCounter, const unsigned int nTerminus,
     const unsigned int nTerminusPerBlock,
-    const unsigned int max_num_neighbours, const unsigned int nPaths,
-    const unsigned int nConnectedEdges);
+    const unsigned int max_num_neighbours, const unsigned int nPaths);
 
 }  // namespace traccc::device
 

@@ -39,9 +39,8 @@ inline void graph_edge_linking(
     const unsigned int pos =
         vecmem::device_atomic_ref<unsigned int>(
             d_num_outgoing_edges[sharedNode])
-            .fetch_sub(1);
-    d_edge_links[pos - 1] =
-        static_cast<unsigned int>(globalIndex);
+            .fetch_sub(1u);
+    d_edge_links[pos - 1u] = static_cast<unsigned int>(globalIndex);
 }
 
 }  // namespace traccc::device

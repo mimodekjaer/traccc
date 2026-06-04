@@ -28,17 +28,13 @@ namespace traccc::device {
 /// into the opposite ping-pong buffer (selected by iter parity).  The
 /// final block to finish records the longest outgoing path summary per edge.
 ///
-/// @param[in]  blockIndex                CUDA block index
-/// @param[in]  threadIndex               CUDA thread index in block
-/// @param[in]  blockSize                 CUDA block size
-/// @param[in]  gridSize                  Total number of threads
-/// @param[in]  barrier                   Block-wide barrier
+/// @param[in]  globalIndex               Current thread index (one per edge)
 /// @param[in]  d_output_graph_view       Compact graph from graph_compression
 /// @param[in,out] d_levels_view          Per-edge level ping-pong
 /// @param[in,out] d_active_edges_view    Per-iteration active-edge list
 /// @param[out] d_outgoing_paths_view     Longest outgoing path summary / edge
 /// @param[in]  iter                      Iteration index
-/// @param[in]  nEdges                    Number of edges in the compact graph
+/// @param[in]  nConnectedEdges           Number of edges in the compact graph
 /// @param[in]  max_num_neighbours        Maximum neighbours per edge
 /// @param[in]  minLevel                  Minimum path length to remain active
 ///
@@ -46,9 +42,9 @@ TRACCC_HOST_DEVICE inline void cca_iteration(
     const global_index_t globalIndex,
     const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<unsigned char>::view d_levels_view,
-    const collection_types<unsigned char>::view d_active_edges_view,
+    const collection_types<char>::view d_active_edges_view,
     const collection_types<short2>::view d_outgoing_paths_view,
-    const unsigned char iter, const unsigned int nEdges,
+    const unsigned char iter, const unsigned int nConnectedEdges,
     const unsigned int max_num_neighbours, const unsigned char minLevel);
 
 }  // namespace traccc::device

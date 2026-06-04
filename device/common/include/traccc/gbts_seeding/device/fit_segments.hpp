@@ -57,7 +57,6 @@ inline void fit_segments(
     const unsigned int nTerminusEdges,
     const unsigned char minLevel,
     const unsigned int max_num_neighbours,
-    const unsigned int nConnectedEdges,
     const gbts_seed_extraction_params& seed_extraction_params);
 
 }  // namespace traccc::device

@@ -42,6 +42,20 @@ struct gbts_layerInfo {
     }
 };
 
+// Named indices into the flat device counter buffer, mirroring the layout in
+// traccc/gbts_changes. One memset zeros all of them.
+enum gbts_counter : unsigned int {
+    nEdges,           // edges created by graph_edge_making
+    nConnections,     // edge-to-edge connections from graph_edge_matching
+    nConnectedEdges,  // edges kept after edge_re_indexing
+    nEdgesLeft,       // edges remaining for CCA (kept for reference parity)
+    nPaths,           // total paths reachable from any terminus edge
+    nTerminusEdges,   // #terminus edges; then reused as path-store write cursor
+    nProps,           // seed proposals from fit_segments
+    nRejected,        // rejected seed proposals
+    nCounters         // total number of counters
+};
+
 struct gbts_consts {
 
     // CCA max iterations -> maxium seed length
@@ -50,26 +64,13 @@ struct gbts_consts {
     static constexpr unsigned short node_buffer_length = 128;
     static constexpr unsigned short live_path_buffer = 1024;
 
-    // access into output graph (column indices in the SoA layout)
-    static constexpr char node1 = 0;
-    static constexpr char node2 = 1;
-    static constexpr char nNei = 2;
-    static constexpr char nei_start = 3;
+    // Per-edge offsets into the row-major output graph
+    // (each edge occupies edge_size = 2 + 1 + max_num_neighbours ints).
+    static constexpr unsigned char node1 = 0;
+    static constexpr unsigned char node2 = 1;
+    static constexpr unsigned char nNei = 2;
+    static constexpr unsigned char nei_start = 3;
 };
-
-/// SoA index into the compacted output_graph buffer.
-///
-/// The compacted graph is laid out column-major over edges: each of the
-/// (2 + 1 + nMaxNei) columns owns a contiguous array of `stride` entries
-/// (where `stride == nConnectedEdges`). Adjacent threads of a warp that hold
-/// adjacent edge indices therefore see contiguous addresses for the same
-/// column, giving coalesced global loads. (Row-major would put adjacent
-/// threads `edge_size * 4` bytes apart and force a separate sector per
-/// thread.)
-TRACCC_HOST_DEVICE inline unsigned int gbts_og_index(
-    unsigned int col, unsigned int edge, unsigned int stride) {
-    return col * stride + edge;
-}
 
 }  // namespace traccc::device
 
@@ -134,9 +135,11 @@ struct gbts_dphi_window_params {
     // Baseline phi window and dr-dependent slope.
     float min_delta_phi = 0.015f;
     float dphi_coeff = 2.2e-4f;
-    // Tighter window used when delta-R is small (< 60 mm).
+    // Tighter window used when delta-R is below low_dr_threshold (mm).
     float min_delta_phi_low_dr = 0.002f;
     float dphi_coeff_low_dr = 4.33e-4f;
+    // delta-R (mm) below which the tighter "low dr" window is used.
+    float low_dr_threshold = 60.0f;
 };
 
 struct gbts_seed_extraction_params {

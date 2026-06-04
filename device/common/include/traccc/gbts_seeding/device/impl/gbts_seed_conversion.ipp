@@ -77,7 +77,6 @@ inline void gbts_seed_conversion(
     const edm::seed_collection::view& output_seeds,
     const collection_types<unsigned long long int>::view& d_hit_bids_view,
     const unsigned int nProps, const unsigned int max_num_neighbours,
-    const unsigned int nConnectedEdges,
     const float dcurv_cut_m, const float force_dropout_max_curv_m,
     const float best_hit_frac, const float tight_bid_cot_threshold,
     const bool use_dropout) {
@@ -94,7 +93,9 @@ inline void gbts_seed_conversion(
     collection_types<unsigned long long int>::device d_hit_bids(
         d_hit_bids_view);
 
-    (void)max_num_neighbours;  // SoA layout: column stride is nConnectedEdges.
+    // Row-major output graph: each edge owns a contiguous block of
+    // edge_size = 2 + 1 + max_num_neighbours ints.
+    const unsigned int edge_size = 2u + 1u + max_num_neighbours;
     for (unsigned int prop_idx = globalIndex; prop_idx < nProps;
          prop_idx += gridSize) {
 
@@ -108,18 +109,16 @@ inline void gbts_seed_conversion(
         int2 path = make_int2(0, prop.y);
         while (path.y >= 0) {
             path = d_path_store[static_cast<unsigned int>(path.y)];
-            seed.nodes[seed.size++] = d_output_graph[
-                traccc::device::gbts_og_index(
-                    traccc::device::gbts_consts::node1,
-                    static_cast<unsigned int>(path.x), nConnectedEdges)];
+            seed.nodes[seed.size++] =
+                d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+                               gbts_consts::node1];
             best_for_hit +=
                 (prop_idx ==
                  (d_hit_bids[seed.nodes[seed.size - 1]] & 0xFFFFFFFFLL));
         }
-        seed.nodes[seed.size++] = d_output_graph[
-            traccc::device::gbts_og_index(
-                traccc::device::gbts_consts::node2,
-                static_cast<unsigned int>(path.x), nConnectedEdges)];
+        seed.nodes[seed.size++] =
+            d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+                           gbts_consts::node2];
         best_for_hit +=
             (prop_idx ==
              (d_hit_bids[seed.nodes[seed.size - 1]] & 0xFFFFFFFFLL));

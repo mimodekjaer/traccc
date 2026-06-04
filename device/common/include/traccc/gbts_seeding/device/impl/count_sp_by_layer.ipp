@@ -40,7 +40,7 @@ inline void count_sp_by_layer(
     const collection_types<char>::const_view& layerType_view,
     const collection_types<float4>::view reducedSP_view,
     const collection_types<unsigned int>::view layerCounts_view,
-    const collection_types<short>::view spacepointsLayer_view,
+    const collection_types<unsigned short>::view spacepointsLayer_view,
     const unsigned int nSp,
     const unsigned long int volumeMapSize, const unsigned long int surfaceMapSize,
     const gbts_sp_counting_params sp_counting_params) {
@@ -60,7 +60,8 @@ inline void count_sp_by_layer(
     const collection_types<char>::const_device layerType(layerType_view);
 
     collection_types<unsigned int>::device layerCounts(layerCounts_view);
-    collection_types<short>::device spacepointsLayer(spacepointsLayer_view);
+    collection_types<unsigned short>::device spacepointsLayer(
+        spacepointsLayer_view);
     collection_types<float4>::device reducedSP(reducedSP_view);
 
     const auto spacepoint = spacepoints.at(globalIndex);
@@ -105,7 +106,7 @@ inline void count_sp_by_layer(
                                 : cluster_diameter;
 
     vecmem::device_atomic_ref<unsigned int>(layerCounts[layerIdx]).fetch_add(1u);
-    spacepointsLayer[globalIndex] = static_cast<short>(layerIdx);
+    spacepointsLayer[globalIndex] = static_cast<unsigned short>(layerIdx);
     const std::array<float, 3u> pos = spacepoint.global();
     reducedSP[globalIndex] = make_float4(pos[0], pos[1], pos[2],
                                          cluster_diameter);

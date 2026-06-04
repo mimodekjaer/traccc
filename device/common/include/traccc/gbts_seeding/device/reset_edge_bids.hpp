@@ -42,10 +42,9 @@ inline void reset_edge_bids(
     const collection_types<int2>::const_view& d_path_store_view,
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
-    const collection_types<char>::view d_seed_ambiguity_view, 
+    const collection_types<char>::view d_seed_ambiguity_view,
     const unsigned int nProps,
-    unsigned int& nRejectedPropsCounter, 
-    int round);
+    unsigned int& nRejectedPropsCounter);
 
 }  // namespace traccc::device
 

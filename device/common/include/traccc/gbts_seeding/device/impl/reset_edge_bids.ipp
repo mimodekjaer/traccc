@@ -25,8 +25,7 @@ inline void reset_edge_bids(
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
     const collection_types<char>::view d_seed_ambiguity_view,
-    const unsigned int nProps, unsigned int& nRejectedPropsCounter,
-    const int round) {
+    const unsigned int nProps, unsigned int& nRejectedPropsCounter) {
 
     const collection_types<int2>::const_device d_path_store(d_path_store_view);
     collection_types<int2>::device d_seed_proposals(d_seed_proposals_view);
@@ -34,26 +33,19 @@ inline void reset_edge_bids(
         d_edge_bids_view);
     collection_types<char>::device d_seed_ambiguity(d_seed_ambiguity_view);
 
+    // first round find best seed starting at each edge
     for (unsigned int prop_idx = globalIndex; prop_idx < nProps;
          prop_idx += gridSize) {
 
         const char ambi = d_seed_ambiguity[prop_idx];
-        if (round == -1) {
-            if (ambi == 0) {
-                d_seed_ambiguity[prop_idx] = 1;
-                continue;
-            } else {
-                d_seed_ambiguity[prop_idx] = -2;
-                vecmem::device_atomic_ref<unsigned int>(nRejectedPropsCounter)
-                    .fetch_add(1u);
-                continue;
-            }
-        } else if ((ambi == -2) | (ambi == 0)) {
+        if ((ambi == -2) | (ambi == 0)) {
+            // only reset maybes
             continue;
         }
         const int2 prop = d_seed_proposals[prop_idx];
 
         bool isgood = true;
+        // dummy path to start the loop
         int2 path = make_int2(0, prop.y);
         while (path.y >= 0) {
             path = d_path_store[static_cast<unsigned int>(path.y)];
@@ -66,8 +58,10 @@ inline void reset_edge_bids(
             }
         }
         if (isgood) {
+            // flag as maybe seed, shares with a loser
             d_seed_ambiguity[prop_idx] = 1;
         } else {
+            // definite fake, shares with a winner
             d_seed_ambiguity[prop_idx] = -2;
             vecmem::device_atomic_ref<unsigned int>(nRejectedPropsCounter)
                 .fetch_add(1u);

@@ -8,15 +8,55 @@
 #pragma once
 
 // Local include(s).
+#include "traccc/definitions/common.hpp"
 #include "traccc/definitions/qualifiers.hpp"
+#include "traccc/utils/trigonometric_helpers.hpp"
+
+// System include(s).
+#include <cmath>
+
+// On a CUDA (or HIP) build the GBTS vector types alias the native built-in
+// vector types so the device code matches the reference and gets the native
+// vectorised loads. Every other backend (SYCL, Alpaka, plain host) uses the
+// portable struct fallback below; their native `vec` types use a different
+// element-access API, so the struct keeps the shared kernel `.ipp` code
+// compiling unchanged. The fallback keeps the exact alignment of the builtins so
+// the types are layout-identical across translation units.
+#if defined(__CUDACC__) || defined(__HIP__)
+#define TRACCC_GBTS_USE_BUILTIN_VECTORS 1
+#include <vector_functions.h>
+#include <vector_types.h>
+#else
+// SYCL / Alpaka / host fall through to the portable struct.
+#define TRACCC_GBTS_USE_BUILTIN_VECTORS 0
+#endif
 
 // A CUDA build may opt into hardware FP16 storage for the edge parameters by
-// defining TRACCC_GBTS_EDGE_HALF (see gbts_edge_real_t below).
+// defining TRACCC_GBTS_EDGE_HALF (see gbts_edge_t below).
 #if defined(TRACCC_GBTS_EDGE_HALF) && defined(__CUDACC__)
 #include <cuda_fp16.h>
 #endif
 
 namespace traccc {
+
+#if TRACCC_GBTS_USE_BUILTIN_VECTORS
+
+// Built-in vector types and constructors (CUDA / HIP).
+using ::float2;
+using ::float4;
+using ::int2;
+using ::short2;
+using ::uint2;
+using ::uint4;
+
+using ::make_float2;
+using ::make_float4;
+using ::make_int2;
+using ::make_short2;
+using ::make_uint2;
+using ::make_uint4;
+
+#else
 
 struct TRACCC_ALIGN(8) uint2 {
     unsigned int x, y;
@@ -75,46 +115,76 @@ inline TRACCC_HOST_DEVICE traccc::short2 make_short2(const short x,
     return traccc::short2{x, y};
 }
 
+#endif  // TRACCC_GBTS_USE_BUILTIN_VECTORS
+
 // --- Configurable edge-parameter storage precision -------------------------
 //
 // The graph edge parameters (exp(-eta), curvature and the two predicted phis)
 // are the hottest read in the matcher.  Their storage precision is a single
 // configurable typedef so a backend can trade a little accuracy for memory
 // bandwidth without ever writing a CUDA-specific type itself: device code only
-// goes through gbts_to_real / gbts_to_float below.
+// goes through gbts_edge_from_float / gbts_edge_to_float below, and the packed
+// gbts_edge4 vector.
 //
-// It defaults to `float`, which keeps an identical host/device ABI for every
-// backend -- including the CUDA-free common orchestrator that allocates the
-// edge-parameter buffers.  A CUDA build may opt into hardware FP16 storage by
-// defining TRACCC_GBTS_EDGE_HALF; the conversions then use the half intrinsics.
+// It defaults to `float` (gbts_edge4 == float4), which keeps an identical
+// host/device ABI for every backend.  A CUDA build may opt into hardware FP16
+// storage by defining TRACCC_GBTS_EDGE_HALF; the conversions then use the half
+// intrinsics and gbts_edge4 becomes a packed half vector.
 #if defined(TRACCC_GBTS_EDGE_HALF) && defined(__CUDACC__)
 
-using gbts_edge_real_t = __half;
+using gbts_edge_t = __half;
 
-inline TRACCC_HOST_DEVICE gbts_edge_real_t gbts_to_real(const float f) {
+struct TRACCC_ALIGN(8) gbts_edge4 {
+    gbts_edge_t x, y, z, w;
+};
+
+inline TRACCC_HOST_DEVICE gbts_edge_t gbts_edge_from_float(const float f) {
     return __float2half(f);
 }
-inline TRACCC_HOST_DEVICE float gbts_to_float(const gbts_edge_real_t r) {
+inline TRACCC_HOST_DEVICE float gbts_edge_to_float(const gbts_edge_t r) {
     return __half2float(r);
 }
 
 #else
 
-using gbts_edge_real_t = float;
+using gbts_edge_t = float;
+using gbts_edge4 = float4;
 
-inline TRACCC_HOST_DEVICE gbts_edge_real_t gbts_to_real(const float f) {
+inline TRACCC_HOST_DEVICE gbts_edge_t gbts_edge_from_float(const float f) {
     return f;
 }
-inline TRACCC_HOST_DEVICE float gbts_to_float(const gbts_edge_real_t r) {
+inline TRACCC_HOST_DEVICE float gbts_edge_to_float(const gbts_edge_t r) {
     return r;
 }
 
 #endif
 
+inline TRACCC_HOST_DEVICE gbts_edge4 gbts_make_edge4(const float x,
+                                                     const float y,
+                                                     const float z,
+                                                     const float w) {
+    return gbts_edge4{gbts_edge_from_float(x), gbts_edge_from_float(y),
+                      gbts_edge_from_float(z), gbts_edge_from_float(w)};
+}
+
 namespace device {
 
-inline constexpr float gbts_pi_f = 3.1415927410125732422f;
-inline constexpr float gbts_two_pi_f = 2.0f * gbts_pi_f;
+inline constexpr float PI_F = traccc::constant<float>::pi;
+inline constexpr float TWO_PI_F = 2.0f * traccc::constant<float>::pi;
+
+/// Wrap an angle into (-pi, pi], matching the reference (round-to-nearest).
+TRACCC_HOST_DEVICE inline float phi_wrap(const float phi) {
+    return phi - TWO_PI_F * rintf(phi * (1.0f / TWO_PI_F));
+}
+
+#if defined(TRACCC_GBTS_EDGE_HALF) && defined(__CUDACC__)
+/// Half-precision phi wrap (device-only); kept so half edge math still works.
+__device__ inline __half phi_wrap(const __half phi) {
+    const __half two_pi_h = __float2half(2.0f * traccc::constant<float>::pi);
+    const __half one_h = __float2half(1.0f);
+    return phi - two_pi_h * hrint(phi * (one_h / two_pi_h));
+}
+#endif
 
 }  // namespace device
 

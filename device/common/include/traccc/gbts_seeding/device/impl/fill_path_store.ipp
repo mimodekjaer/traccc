@@ -10,6 +10,7 @@
 // Project include(s).
 #include "traccc/definitions/qualifiers.hpp"
 #include "traccc/device/concepts/barrier.hpp"
+#include "traccc/device/concepts/thread_id.hpp"
 #include "traccc/edm/container.hpp"
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
 #include "traccc/gbts_seeding/gbts_types.hpp"
@@ -22,18 +23,20 @@
 
 namespace traccc::device {
 
-template <concepts::barrier barrier_t>
+template <concepts::thread_id1 thread_id_t, concepts::barrier barrier_t>
 TRACCC_HOST_DEVICE inline void fill_path_store(
-    const unsigned int blockIndex, const unsigned int threadIndex,
-    const unsigned int blockSize, const barrier_t& barrier,
+    const thread_id_t& thread_id, const barrier_t& barrier,
     traccc::uint2* live_paths, int& n_live_paths,
     collection_types<int2>::view d_path_store_view,
     const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<unsigned char>::const_view& d_levels_view,
     unsigned int& nPathStoreSizeCounter,
     const unsigned int nTerminus, const unsigned int nTerminusPerBlock,
-    const unsigned int max_num_neighbours, const unsigned int nPaths,
-    const unsigned int nConnectedEdges) {
+    const unsigned int max_num_neighbours, const unsigned int nReachablePaths) {
+
+    const unsigned int threadIndex = thread_id.getLocalThreadIdX();
+    const unsigned int blockIndex = thread_id.getBlockIdX();
+    const unsigned int blockSize = thread_id.getBlockDimX();
 
     collection_types<int2>::device d_path_store(d_path_store_view);
     const collection_types<unsigned int>::const_device d_output_graph(
@@ -45,20 +48,20 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
     }
     barrier.blockBarrier();
 
-    (void)max_num_neighbours;  // SoA layout: column stride is nConnectedEdges.
+    // Row-major output graph: each edge owns a contiguous block of
+    // edge_size = 2 + 1 + max_num_neighbours ints.
+    const unsigned int edge_size = 2u + 1u + max_num_neighbours;
     unsigned int path_idx = threadIndex + blockIndex * nTerminusPerBlock;
 
     if (threadIndex < nTerminusPerBlock && path_idx < nTerminus) {
         const int2 path = d_path_store[path_idx];
-        const unsigned int nNei = d_output_graph[traccc::device::gbts_og_index(
-            traccc::device::gbts_consts::nNei,
-            static_cast<unsigned int>(path.x), nConnectedEdges)];
+        const unsigned int edge_pos =
+            edge_size * static_cast<unsigned int>(path.x);
+        const unsigned int nNei = d_output_graph[edge_pos + gbts_consts::nNei];
         const unsigned char level = d_levels[static_cast<unsigned int>(path.x)];
         for (unsigned int nei = 0; nei < nNei; ++nei) {
-            const unsigned int edge_idx = d_output_graph[
-                traccc::device::gbts_og_index(
-                    traccc::device::gbts_consts::nei_start + nei,
-                    static_cast<unsigned int>(path.x), nConnectedEdges)];
+            const unsigned int edge_idx =
+                d_output_graph[edge_pos + gbts_consts::nei_start + nei];
             if (level != d_levels[static_cast<unsigned int>(edge_idx)] + 1) {
                 continue;
             }
@@ -104,16 +107,13 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
         }
         barrier.blockBarrier();
         if (has_path) {
+            const unsigned int edge_pos = edge_size * path.x;
             const unsigned int nNei =
-                d_output_graph[traccc::device::gbts_og_index(
-                    traccc::device::gbts_consts::nNei, path.x,
-                    nConnectedEdges)];
+                d_output_graph[edge_pos + gbts_consts::nNei];
             const unsigned char level = d_levels[path.x];
             for (unsigned int nei = 0; nei < nNei; ++nei) {
                 const unsigned int edge_idx =
-                    d_output_graph[traccc::device::gbts_og_index(
-                        traccc::device::gbts_consts::nei_start + nei,
-                        path.x, nConnectedEdges)];
+                    d_output_graph[edge_pos + gbts_consts::nei_start + nei];
                 if (level != d_levels[edge_idx] + 1) {
                     continue;
                 }
@@ -121,7 +121,7 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
                     vecmem::device_atomic_ref<unsigned int>(
                         nPathStoreSizeCounter)
                         .fetch_add(1u);
-                if (path_idx >= nPaths) {
+                if (path_idx >= nReachablePaths) {
                     break;
                 }
                 const int live_idx =
@@ -130,8 +130,8 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
                                     traccc::device::gbts_consts::live_path_buffer)) {
                     break;
                 }
-                d_path_store[path_idx] =
-                    make_int2(static_cast<int>(edge_idx), static_cast<int>(path.y));
+                d_path_store[path_idx] = make_int2(
+                    static_cast<int>(edge_idx), static_cast<int>(path.y));
                 live_paths[static_cast<unsigned int>(live_idx)] =
                     make_uint2(edge_idx, path_idx);
             }

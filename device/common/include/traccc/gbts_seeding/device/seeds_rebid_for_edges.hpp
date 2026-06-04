@@ -41,8 +41,9 @@ inline void seeds_rebid_for_edges(
     const collection_types<int2>::const_view& d_path_store_view,
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
-    const collection_types<char>::view d_seed_ambiguity_view, 
-    const unsigned int nProps);
+    const collection_types<char>::view d_seed_ambiguity_view,
+    const unsigned int nProps, unsigned int& nRejectedPropsCounter,
+    const bool first_round);
 
 }  // namespace traccc::device
 
