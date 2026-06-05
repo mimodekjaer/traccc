@@ -34,7 +34,6 @@ namespace traccc::device {
 /// @param[out] d_neighbours_view            Neighbour edge indices per edge
 /// @param[out] d_reIndexer_view             Per-edge "kept" flag
 /// @param[in,out] nConnectionsCounter       Global connection-count atomic
-/// @param[in]  nEdges                       Number of edges
 /// @param[in]  nMaxNei                      Max neighbours retained per edge
 ///
 TRACCC_HOST_DEVICE inline void graph_edge_matching(
@@ -47,8 +46,7 @@ TRACCC_HOST_DEVICE inline void graph_edge_matching(
     const collection_types<unsigned char>::view& d_num_neighbours_view,
     const collection_types<unsigned int>::view& d_neighbours_view,
     const collection_types<int>::view& d_reIndexer_view,
-    unsigned int& nConnectionsCounter, const unsigned int nEdges,
-    const unsigned int nMaxNei);
+    unsigned int& nConnectionsCounter, const unsigned int nMaxNei);
 
 }  // namespace traccc::device
 

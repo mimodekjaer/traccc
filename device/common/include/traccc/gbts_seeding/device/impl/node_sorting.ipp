@@ -35,12 +35,7 @@ inline void node_sorting(
     const collection_types<unsigned int>::view d_node_index_view,
     const collection_types<unsigned int>::const_view& d_original_sp_idx_view,
     const collection_types<float>::const_view& d_tau_lut_view,
-    const gbts_node_sorting_params& ap, const unsigned int nNodes,
-    const unsigned int nPhiBins) {
-
-    if (globalIndex >= nNodes) {
-        return;
-    }
+    const gbts_node_sorting_params& ap, const unsigned int nPhiBins) {
 
     const collection_types<float4>::const_device d_sp_params(d_sp_params_view);
     const collection_types<unsigned int>::const_device d_node_eta_index(

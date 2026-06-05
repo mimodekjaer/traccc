@@ -36,12 +36,7 @@ TRACCC_HOST_DEVICE inline void graph_edge_matching(
     const collection_types<unsigned char>::view& d_num_neighbours_view,
     const collection_types<unsigned int>::view& d_neighbours_view,
     const collection_types<int>::view& d_reIndexer_view,
-    unsigned int& nConnectionsCounter, const unsigned int nEdges,
-    const unsigned int nMaxNei) {
-
-    if (globalIndex >= nEdges) {
-        return;
-    }
+    unsigned int& nConnectionsCounter, const unsigned int nMaxNei) {
 
     const collection_types<gbts_edge4>::const_device d_edge_params(
         d_edge_params_view);

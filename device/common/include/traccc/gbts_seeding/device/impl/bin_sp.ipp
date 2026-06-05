@@ -38,11 +38,7 @@ inline void bin_sp(
     const collection_types<unsigned int>::view node_eta_index_view,
     const collection_types<unsigned int>::view node_phi_index_view,
     const collection_types<unsigned int>::view eta_phi_histo_view,
-    const unsigned int nSp, const unsigned int nPhiBins) {
-
-    if (globalIndex >= nSp) {
-        return;
-    }
+    const unsigned int nPhiBins) {
 
     const collection_types<float4>::const_device reducedSP(reducedSP_view);
     const collection_types<unsigned short>::const_device spacepointsLayer(

@@ -32,13 +32,11 @@ namespace traccc::device {
 /// @param[in]  d_outgoing_paths_view       Per-edge longest-path summary
 /// @param[in,out] nPathsCounter            Total reachable paths
 /// @param[in,out] nPathStoreSizeCounter    Running terminus-edge count
-/// @param[in]  nEdges                      Number of edges in compact graph
 ///
 TRACCC_HOST_DEVICE inline void count_terminus_edges(
     const global_index_t globalIndex,
     const collection_types<short2>::view d_outgoing_paths_view,
-    unsigned int& nPathsCounter, unsigned int& nPathStoreSizeCounter,
-    const unsigned int nEdges);
+    unsigned int& nPathsCounter, unsigned int& nPathStoreSizeCounter);
 
 }  // namespace traccc::device
 

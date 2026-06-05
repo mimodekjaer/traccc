@@ -87,10 +87,12 @@ __global__ void bin_sp(
     const collection_types<unsigned int>::view eta_phi_histo,
     const unsigned int nSp, const unsigned int nPhiBins) {
 
-    device::bin_sp(details::global_index1(), sp_params, reducedSP, layerCounts,
-                   spacepointsLayer, original_sp_idx, layer_info, layer_geo,
-                   node_eta_index, node_phi_index, eta_phi_histo, nSp,
-                   nPhiBins);
+    for (unsigned int idx = details::global_index1(); idx < nSp;
+         idx += blockDim.x * gridDim.x) {
+        device::bin_sp(idx, sp_params, reducedSP, layerCounts, spacepointsLayer,
+                       original_sp_idx, layer_info, layer_geo, node_eta_index,
+                       node_phi_index, eta_phi_histo, nPhiBins);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::eta_phi_counting
@@ -128,10 +130,13 @@ __global__ void node_sorting(
     const gbts_node_sorting_params node_sorting_params,
     const unsigned int nNodes, const unsigned int nPhiBins) {
 
-    device::node_sorting(details::global_index1(), sp_params, node_eta_index,
-                         node_phi_index, phi_cusums, node_params, node_phi,
-                         node_index, original_sp_idx, tau_lut,
-                         node_sorting_params, nNodes, nPhiBins);
+    for (unsigned int idx = details::global_index1(); idx < nNodes;
+         idx += blockDim.x * gridDim.x) {
+        device::node_sorting(idx, sp_params, node_eta_index, node_phi_index,
+                             phi_cusums, node_params, node_phi, node_index,
+                             original_sp_idx, tau_lut, node_sorting_params,
+                             nPhiBins);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::minmax_rad
@@ -179,8 +184,11 @@ __global__ void graph_edge_linking(
     const collection_types<unsigned int>::view num_outgoing_edges,
     const unsigned int nEdges) {
 
-    device::graph_edge_linking(details::global_index1(), edge_nodes, edge_links,
-                               num_outgoing_edges, nEdges);
+    for (unsigned int idx = details::global_index1(); idx < nEdges;
+         idx += blockDim.x * gridDim.x) {
+        device::graph_edge_linking(idx, edge_nodes, edge_links,
+                                   num_outgoing_edges);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::graph_edge_matching
@@ -196,10 +204,13 @@ __global__ void graph_edge_matching(
     unsigned int* nConnectionsCounter, const unsigned int nEdges,
     const unsigned int nMaxNei) {
 
-    device::graph_edge_matching(
-        details::global_index1(), edge_matching_params, edge_params, edge_nodes,
-        num_outgoing_edges, edge_links, num_neighbours, neighbours, reIndexer,
-        *nConnectionsCounter, nEdges, nMaxNei);
+    for (unsigned int idx = details::global_index1(); idx < nEdges;
+         idx += blockDim.x * gridDim.x) {
+        device::graph_edge_matching(idx, edge_matching_params, edge_params,
+                                    edge_nodes, num_outgoing_edges, edge_links,
+                                    num_neighbours, neighbours, reIndexer,
+                                    *nConnectionsCounter, nMaxNei);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::edge_re_indexing
@@ -253,9 +264,11 @@ __global__ void count_terminus_edges(
     unsigned int* nPathsCounter, unsigned int* nPathStoreSizeCounter,
     const unsigned int nEdges) {
 
-    device::count_terminus_edges(details::global_index1(), outgoing_paths,
-                                 *nPathsCounter, *nPathStoreSizeCounter,
-                                 nEdges);
+    for (unsigned int idx = details::global_index1(); idx < nEdges;
+         idx += blockDim.x * gridDim.x) {
+        device::count_terminus_edges(idx, outgoing_paths, *nPathsCounter,
+                                     *nPathStoreSizeCounter);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::add_terminus_to_path_store
@@ -665,7 +678,7 @@ void gbts_seeding_algorithm::gbts_seed_conversion_kernel(
     const gbts_seed_conversion_kernel_payload& payload) const {
 
     const unsigned int n_threads = 128;
-    const unsigned int n_blocks = 1 + (payload.nSeeds - 1) / n_threads;
+    const unsigned int n_blocks = 1 + (payload.nProps - 1) / n_threads;
     kernels::gbts_seed_conversion<<<n_blocks, n_threads, 0,
                                     details::get_stream(stream())>>>(
         payload.seed_proposals, payload.seed_ambiguity, payload.path_store,

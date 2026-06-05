@@ -23,12 +23,7 @@ inline void graph_edge_linking(
     const global_index_t globalIndex,
     const collection_types<uint2>::const_view& d_edge_nodes_view,
     const collection_types<unsigned int>::view d_edge_links_view,
-    const collection_types<unsigned int>::view d_num_outgoing_edges_view,
-    const unsigned int nEdges) {
-
-    if (globalIndex >= nEdges) {
-        return;
-    }
+    const collection_types<unsigned int>::view d_num_outgoing_edges_view) {
 
     const collection_types<uint2>::const_device d_edge_nodes(d_edge_nodes_view);
     collection_types<unsigned int>::device d_edge_links(d_edge_links_view);

@@ -28,15 +28,13 @@ namespace traccc::device {
 /// @param[in]  d_edge_nodes_view             (src, dst) per edge
 /// @param[out] d_edge_links_view             Per-edge slot in dst's list
 /// @param[in,out] d_num_outgoing_edges_view  Per-node prefix-sum write cursor
-/// @param[in]  nEdges                        Number of edges
 ///
 TRACCC_HOST_DEVICE
 inline void graph_edge_linking(
     const global_index_t globalIndex,
     const collection_types<uint2>::const_view& d_edge_nodes_view,
     const collection_types<unsigned int>::view d_edge_links_view,
-    const collection_types<unsigned int>::view d_num_outgoing_edges_view,
-    const unsigned int nEdges);
+    const collection_types<unsigned int>::view d_num_outgoing_edges_view);
 
 }  // namespace traccc::device
 
