@@ -15,13 +15,7 @@
 // System include(s).
 #include <cmath>
 
-// On a CUDA (or HIP) build the GBTS vector types alias the native built-in
-// vector types so the device code matches the reference and gets the native
-// vectorised loads. Every other backend (SYCL, Alpaka, plain host) uses the
-// portable struct fallback below; their native `vec` types use a different
-// element-access API, so the struct keeps the shared kernel `.ipp` code
-// compiling unchanged. The fallback keeps the exact alignment of the builtins
-// so the types are layout-identical across translation units.
+// CUDA HIP
 #if defined(__CUDACC__) || defined(__HIP__)
 #define TRACCC_GBTS_USE_BUILTIN_VECTORS 1
 #include <vector_functions.h>
@@ -31,8 +25,7 @@
 #define TRACCC_GBTS_USE_BUILTIN_VECTORS 0
 #endif
 
-// A CUDA build may opt into hardware FP16 storage for the edge parameters by
-// defining TRACCC_GBTS_EDGE_HALF (see gbts_edge_t below).
+
 #if defined(TRACCC_GBTS_EDGE_HALF) && defined(__CUDACC__)
 #include <cuda_fp16.h>
 #endif
@@ -117,19 +110,6 @@ inline TRACCC_HOST_DEVICE traccc::short2 make_short2(const short x,
 
 #endif  // TRACCC_GBTS_USE_BUILTIN_VECTORS
 
-// --- Configurable edge-parameter storage precision -------------------------
-//
-// The graph edge parameters (exp(-eta), curvature and the two predicted phis)
-// are the hottest read in the matcher.  Their storage precision is a single
-// configurable typedef so a backend can trade a little accuracy for memory
-// bandwidth without ever writing a CUDA-specific type itself: device code only
-// goes through gbts_edge_from_float / gbts_edge_to_float below, and the packed
-// gbts_edge4 vector.
-//
-// It defaults to `float` (gbts_edge4 == float4), which keeps an identical
-// host/device ABI for every backend.  A CUDA build may opt into hardware FP16
-// storage by defining TRACCC_GBTS_EDGE_HALF; the conversions then use the half
-// intrinsics and gbts_edge4 becomes a packed half vector.
 #if defined(TRACCC_GBTS_EDGE_HALF) && defined(__CUDACC__)
 
 using gbts_edge_t = __half;

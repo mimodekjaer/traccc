@@ -239,9 +239,9 @@ __global__ void cca_iteration(
     const unsigned char iter, const unsigned int nConnectedEdges,
     const unsigned int max_num_neighbours, const unsigned char minLevel) {
 
-    for (unsigned int edge = details::global_index1(); edge < nConnectedEdges;
-         edge += blockDim.x * gridDim.x) {
-        device::cca_iteration(edge, output_graph, levels, active_edges,
+    for (unsigned int edge_idx = details::global_index1(); edge_idx < nConnectedEdges;
+         edge_idx += blockDim.x * gridDim.x) {
+        device::cca_iteration(edge_idx, output_graph, levels, active_edges,
                               outgoing_paths, iter, nConnectedEdges,
                               max_num_neighbours, minLevel);
     }

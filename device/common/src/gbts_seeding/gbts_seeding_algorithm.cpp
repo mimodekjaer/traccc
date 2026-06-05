@@ -325,10 +325,11 @@ auto gbts_seeding_algorithm::make_graph(
     unsigned int nEdges = h_counters[gbts_counter::nEdges];
     TRACCC_DEBUG("Created " << nEdges << " edges with a cap of " << nMaxEdges);
     if (nEdges > nMaxEdges) {
-        TRACCC_ERROR("Number of edges exceeds the maximum allowed, Removing "
+        TRACCC_WARNING("Number of edges exceeds the maximum allowed, Removing "
                      << nEdges - nMaxEdges << " edges");
         nEdges = nMaxEdges;
     } else if (nEdges == 0) {
+        TRACCC_WARNING("No edges were found");
         return graph_making_output{};
     }
 
