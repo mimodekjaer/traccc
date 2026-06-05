@@ -16,35 +16,23 @@
 
 // System include(s).
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <utility>
 
 namespace traccc::device {
 
-struct gbts_seeding_algorithm::data {
-    gbts_seedfinder_config m_config;
-};  // struct gbts_seeding_algorithm::data
-
 gbts_seeding_algorithm::gbts_seeding_algorithm(
     const gbts_seedfinder_config& cfg, const memory_resource& mr,
     vecmem::copy& copy, std::unique_ptr<const Logger> logger)
-    : messaging(std::move(logger)),
-      algorithm_base{mr, copy},
-      m_data{std::make_unique<data>(cfg)} {}
+    : messaging(std::move(logger)), algorithm_base{mr, copy}, m_config{cfg} {}
 
-gbts_seeding_algorithm::~gbts_seeding_algorithm() = default;
-
-// ===========================================================================
 // Stage 1: node making
-// ===========================================================================
-
 auto gbts_seeding_algorithm::make_nodes(
     const edm::spacepoint_collection::const_view& spacepoints,
     const edm::measurement_collection::const_view& measurements) const
     -> node_making_output {
 
-    const gbts_seedfinder_config& cfg = m_data->m_config;
+    const gbts_seedfinder_config& cfg = m_config;
     const unsigned int nSp = copy().get_size(spacepoints);
 
     // 0. Bin spacepoints by the mapping supplied to config.surfaceToLayerMap.
@@ -213,10 +201,8 @@ auto gbts_seeding_algorithm::make_nodes(
                               nNodes};
 }
 
-// ===========================================================================
-// Stage 2: graph making
-// ===========================================================================
 
+// Stage 2: graph making
 auto gbts_seeding_algorithm::make_graph(
     collection_types<float4>::buffer node_params,
     collection_types<float>::buffer node_phi,
@@ -228,7 +214,7 @@ auto gbts_seeding_algorithm::make_graph(
     collection_types<unsigned int>::host& h_counters) const
     -> graph_making_output {
 
-    const gbts_seedfinder_config& cfg = m_data->m_config;
+    const gbts_seedfinder_config& cfg = m_config;
     unsigned int* d_counters = counters_buf.ptr();
 
     // 2. Prepare input for the graph-making part of the code.
@@ -412,10 +398,7 @@ auto gbts_seeding_algorithm::make_graph(
     return graph_making_output{std::move(output_graph_buf), nConnectedEdges};
 }
 
-// ===========================================================================
 // Stage 3: seed extraction
-// ===========================================================================
-
 auto gbts_seeding_algorithm::extract_seeds(
     collection_types<unsigned int>::buffer& output_graph,
     collection_types<float4>::buffer& reducedSP,
@@ -424,7 +407,7 @@ auto gbts_seeding_algorithm::extract_seeds(
     collection_types<unsigned int>::host& h_counters) const
     -> edm::seed_collection::buffer {
 
-    const gbts_seedfinder_config& cfg = m_data->m_config;
+    const gbts_seedfinder_config& cfg = m_config;
     unsigned int* d_counters = counters_buf.ptr();
 
     // 6. Find longest segments with CCA.
@@ -446,11 +429,12 @@ auto gbts_seeding_algorithm::extract_seeds(
                                                         mr().main);
     copy().setup(outgoing_paths_buf)->ignore();
 
-    // The CCA relaxation loop (max_cca_iter iterations) is driven inside the
-    // launcher.
-    cca_iteration_kernel({nConnectedEdges, cfg.max_num_neighbours, cfg.minLevel,
-                          output_graph, levels_buf, active_edges_buf,
-                          outgoing_paths_buf});
+    for (unsigned char iter = 0;
+         iter < traccc::device::gbts_consts::max_cca_iter; ++iter) {
+        cca_iteration_kernel({nConnectedEdges, cfg.max_num_neighbours, cfg.minLevel,
+                            output_graph, levels_buf, active_edges_buf,
+                            outgoing_paths_buf, iter});
+    }
 
     count_terminus_edges_kernel({nConnectedEdges, outgoing_paths_buf,
                                  d_counters + gbts_counter::nPaths,
@@ -556,16 +540,11 @@ auto gbts_seeding_algorithm::extract_seeds(
     return output_seeds;
 }
 
-// ===========================================================================
-// Driver
-// ===========================================================================
 
 auto gbts_seeding_algorithm::operator()(
     const edm::spacepoint_collection::const_view& spacepoints,
     const edm::measurement_collection::const_view& measurements) const
     -> output_type {
-
-    assert(m_data);
 
     const unsigned int nSp = copy().get_size(spacepoints);
     TRACCC_DEBUG("nSp " << nSp);

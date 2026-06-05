@@ -63,7 +63,7 @@ class gbts_seeding_algorithm
         std::unique_ptr<const Logger> logger = getDummyLogger().clone());
 
     /// Destructor
-    virtual ~gbts_seeding_algorithm();
+    virtual ~gbts_seeding_algorithm() = default;
 
     /// Operator executing the algorithm.
     ///
@@ -403,6 +403,8 @@ class gbts_seeding_algorithm
         const collection_types<char>::view& active_edges;
         /// Output: longest outgoing-path summary per edge (length, next-edge)
         const collection_types<short2>::view& outgoing_paths;
+        // Iteration index (0-based)
+        const unsigned char iter;
     };
 
     /// CCA (connected-components iteration) kernel launcher
@@ -690,10 +692,8 @@ class gbts_seeding_algorithm
 
     /// @}
 
-    /// Internal data type
-    struct data;
-    /// Pointer to internal data
-    std::unique_ptr<data> m_data;
+    /// GBTS seed-finding configuration.
+    gbts_seedfinder_config m_config;
 
 };  // class gbts_seeding_algorithm
 

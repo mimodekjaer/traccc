@@ -554,17 +554,13 @@ void gbts_seeding_algorithm::cca_iteration_kernel(
 
     const unsigned int n_threads = 128;
     const unsigned int n_blocks = 1 + (payload.nConnectedEdges - 1) / n_threads;
-    // The CCA relaxation is a host-driven per-iteration loop (no cooperative
-    // launch); each iteration must complete before the next reads its results.
-    for (unsigned char iter = 0;
-         iter < traccc::device::gbts_consts::max_cca_iter; ++iter) {
-        kernels::cca_iteration<<<n_blocks, n_threads, 0,
-                                 details::get_stream(stream())>>>(
-            payload.output_graph, payload.levels, payload.active_edges,
-            payload.outgoing_paths, iter, payload.nConnectedEdges,
-            payload.max_num_neighbours, payload.minLevel);
-        stream().synchronize();
-    }
+    
+    kernels::cca_iteration<<<n_blocks, n_threads, 0,
+                                details::get_stream(stream())>>>(
+        payload.output_graph, payload.levels, payload.active_edges,
+        payload.outgoing_paths, payload.iter, payload.nConnectedEdges,
+        payload.max_num_neighbours, payload.minLevel);
+    stream().synchronize();
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
