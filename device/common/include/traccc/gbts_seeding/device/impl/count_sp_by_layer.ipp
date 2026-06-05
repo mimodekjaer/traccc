@@ -73,7 +73,7 @@ inline void count_sp_by_layer(
         (volume < volumeMapSize) ? volumeToLayerMap[volume] : SHRT_MAX;
 
     if (begin_or_bin == SHRT_MAX) {
-        reducedSP[globalIndex].w = -CHAR_MAX - 1;
+        reducedSP[globalIndex][3] = -CHAR_MAX - 1;
         return;
     }
     unsigned int layerIdx = 0u;
@@ -97,7 +97,7 @@ inline void count_sp_by_layer(
     float cluster_diameter = measurement.diameter();
     const int type = static_cast<int>(layerType[layerIdx]);
     if (type == 1 && cluster_diameter > sp_counting_params.type1_max_width) {
-        reducedSP[globalIndex].w = -CHAR_MAX - 1;
+        reducedSP[globalIndex][3] = -CHAR_MAX - 1;
         return;
     }
     cluster_diameter = (sp_counting_params.doTauCut && type != 0)

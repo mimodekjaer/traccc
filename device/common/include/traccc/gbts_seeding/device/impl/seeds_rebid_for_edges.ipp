@@ -54,7 +54,7 @@ inline void seeds_rebid_for_edges(
     }
     const int2 prop = d_seed_proposals[prop_idx];
 
-    add_seed_proposal(prop.x, prop.y, prop_idx, d_seed_ambiguity_view,
+    add_seed_proposal(prop[0], prop[1], prop_idx, d_seed_ambiguity_view,
                       d_seed_proposals_view, d_edge_bids_view, d_path_store_view,
                       -1);
 }

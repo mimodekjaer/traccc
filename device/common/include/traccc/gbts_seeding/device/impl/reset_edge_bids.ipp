@@ -45,11 +45,11 @@ inline void reset_edge_bids(
 
     bool isgood = true;
     // dummy path to start the loop
-    int2 path = make_int2(0, prop.y);
-    while (path.y >= 0) {
-        path = d_path_store[static_cast<unsigned int>(path.y)];
+    int2 path = make_int2(0, prop[1]);
+    while (path[1] >= 0) {
+        path = d_path_store[static_cast<unsigned int>(path[1])];
         const unsigned long long int best_bid =
-            d_edge_bids[static_cast<unsigned int>(path.x)];
+            d_edge_bids[static_cast<unsigned int>(path[0])];
         if (d_seed_ambiguity[static_cast<unsigned int>(best_bid &
                                                        0xFFFFFFFFLL)] == 0) {
             isgood = false;

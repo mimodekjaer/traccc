@@ -56,9 +56,9 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
     if (threadIndex < nTerminusPerBlock && path_idx < nTerminus) {
         const int2 path = d_path_store[path_idx];
         const unsigned int edge_pos =
-            edge_size * static_cast<unsigned int>(path.x);
+            edge_size * static_cast<unsigned int>(path[0]);
         const unsigned int nNei = d_output_graph[edge_pos + gbts_consts::nNei];
-        const unsigned char level = d_levels[static_cast<unsigned int>(path.x)];
+        const unsigned char level = d_levels[static_cast<unsigned int>(path[0])];
         for (unsigned int nei = 0; nei < nNei; ++nei) {
             const unsigned int edge_idx =
                 d_output_graph[edge_pos + gbts_consts::nei_start + nei];
@@ -107,10 +107,10 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
         }
         barrier.blockBarrier();
         if (has_path) {
-            const unsigned int edge_pos = edge_size * path.x;
+            const unsigned int edge_pos = edge_size * path[0];
             const unsigned int nNei =
                 d_output_graph[edge_pos + gbts_consts::nNei];
-            const unsigned char level = d_levels[path.x];
+            const unsigned char level = d_levels[path[0]];
             for (unsigned int nei = 0; nei < nNei; ++nei) {
                 const unsigned int edge_idx =
                     d_output_graph[edge_pos + gbts_consts::nei_start + nei];
@@ -131,7 +131,7 @@ TRACCC_HOST_DEVICE inline void fill_path_store(
                     break;
                 }
                 d_path_store[path_idx] = make_int2(static_cast<int>(edge_idx),
-                                                   static_cast<int>(path.y));
+                                                   static_cast<int>(path[1]));
                 live_paths[static_cast<unsigned int>(live_idx)] =
                     make_uint2(edge_idx, path_idx);
             }

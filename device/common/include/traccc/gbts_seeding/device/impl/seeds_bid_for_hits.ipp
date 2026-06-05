@@ -46,21 +46,21 @@ inline void seeds_bid_for_hits(
     }
     const int2 prop = d_seed_proposals[prop_idx];
     const unsigned long long int seed_bid =
-        (static_cast<unsigned long long int>(prop.x) << 32) |
+        (static_cast<unsigned long long int>(prop[0]) << 32) |
         (static_cast<unsigned long long int>(prop_idx));
 
-    int2 path = make_int2(0, prop.y);
-    while (path.y >= 0) {
-        path = d_path_store[static_cast<unsigned int>(path.y)];
+    int2 path = make_int2(0, prop[1]);
+    while (path[1] >= 0) {
+        path = d_path_store[static_cast<unsigned int>(path[1])];
         const unsigned int sp_idx =
-            d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+            d_output_graph[edge_size * static_cast<unsigned int>(path[0]) +
                            gbts_consts::node1];
         vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
             d_hit_bids[sp_idx]);
         atomic_bid.fetch_max(seed_bid);
     }
     const unsigned int sp_idx =
-        d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+        d_output_graph[edge_size * static_cast<unsigned int>(path[0]) +
                        gbts_consts::node2];
     vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
         d_hit_bids[sp_idx]);

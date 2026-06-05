@@ -40,7 +40,7 @@ inline void minmax_rad(
     float max_r = -1e8f;
 
     for (unsigned int idx = node_start; idx < node_end; idx++) {
-        const float r = d_node_params[idx].z;
+        const float r = d_node_params[idx][2];
         max_r = fmaxf(r, max_r);
         min_r = fminf(r, min_r);
     }

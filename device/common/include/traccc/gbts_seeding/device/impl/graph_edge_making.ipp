@@ -39,14 +39,14 @@ TRACCC_HOST_DEVICE inline void gbts_checks(
     const float deltaPhi, const gbts_edge_making_params& ap,
     const unsigned int nMaxEdges) {
 
-    const float tau_min1 = node_params_1.x;
-    const float tau_max1 = node_params_1.y;
-    const float r1 = node_params_1.z;
-    const float z1 = node_params_1.w;
-    const float tau_min2 = node_params_2.x;
-    const float tau_max2 = node_params_2.y;
-    const float r2 = node_params_2.z;
-    const float z2 = node_params_2.w;
+    const float tau_min1 = node_params_1[0];
+    const float tau_max1 = node_params_1[1];
+    const float r1 = node_params_1[2];
+    const float z1 = node_params_1[3];
+    const float tau_min2 = node_params_2[0];
+    const float tau_max2 = node_params_2[1];
+    const float r2 = node_params_2[2];
+    const float z2 = node_params_2[3];
     const float dr = r2 - r1;
 
     if (dr < ap.minDeltaRadius) {

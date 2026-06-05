@@ -50,29 +50,29 @@ struct edgeState {
         const traccc::float4& node1_params,
         const traccc::float4& node2_params) {
         m_J = 0.0f;
-        m_head_node_type = (node1_params.w < 0);
+        m_head_node_type = (node1_params[3] < 0);
 
-        const float dx = node1_params.x - node2_params.x;
-        const float dy = node1_params.y - node2_params.y;
+        const float dx = node1_params[0] - node2_params[0];
+        const float dy = node1_params[1] - node2_params[1];
         const float L = sqrtf(dx * dx + dy * dy);
 
-        const float r1 = sqrtf(node1_params.x * node1_params.x +
-                               node1_params.y * node1_params.y);
-        const float r2 = sqrtf(node2_params.x * node2_params.x +
-                               node2_params.y * node2_params.y);
+        const float r1 = sqrtf(node1_params[0] * node1_params[0] +
+                               node1_params[1] * node1_params[1]);
+        const float r2 = sqrtf(node2_params[0] * node2_params[0] +
+                               node2_params[1] * node2_params[1]);
 
         m_s = dy / L;
         m_c = dx / L;
 
         m_refY = r2;
-        m_refX = node2_params.x * m_c + node2_params.y * m_s;
+        m_refX = node2_params[0] * m_c + node2_params[1] * m_s;
 
-        m_X[0] = -node2_params.x * m_s + node2_params.y * m_c;
+        m_X[0] = -node2_params[0] * m_s + node2_params[1] * m_c;
         m_X[1] = 0.0f;
         m_X[2] = 0.0f;
 
-        m_Y[0] = node2_params.z;
-        m_Y[1] = (node1_params.z - node2_params.z) / (r1 - r2);
+        m_Y[0] = node2_params[2];
+        m_Y[1] = (node1_params[2] - node2_params[2]) / (r1 - r2);
 
         std::memset(&m_Cx(0, 0), 0, sizeof(Cx));
         std::memset(&m_Cy(0, 0), 0, sizeof(Cy));
@@ -100,7 +100,7 @@ TRACCC_HOST_DEVICE inline bool kf_update(
     const float tau2 = ts->m_Y[1] * ts->m_Y[1];
     const float invSin2 = 1 + tau2;
 
-    const float lenCorr = (node1_params.w != -1) ? invSin2 : invSin2 / tau2;
+    const float lenCorr = (node1_params[3] != -1) ? invSin2 : invSin2 / tau2;
     const float minPtFrac = fabsf(ts->m_X[2]) * KF_params.inv_max_curvature;
 
     const float corrMS = KF_params.sigmaMS * minPtFrac;
@@ -110,13 +110,13 @@ TRACCC_HOST_DEVICE inline bool kf_update(
     const float m_Cy11 = ts->m_Cy(1, 1) + sigma2;
 
     float mx, my;
-    const float r = sqrtf(node1_params.x * node1_params.x +
-                          node1_params.y * node1_params.y);
+    const float r = sqrtf(node1_params[0] * node1_params[0] +
+                          node1_params[1] * node1_params[1]);
 
-    new_ts->m_refX = node1_params.x * ts->m_c + node1_params.y * ts->m_s;
-    mx = -node1_params.x * ts->m_s + node1_params.y * ts->m_c;
+    new_ts->m_refX = node1_params[0] * ts->m_c + node1_params[1] * ts->m_s;
+    mx = -node1_params[0] * ts->m_s + node1_params[1] * ts->m_c;
     new_ts->m_refY = r;
-    my = node1_params.z;
+    my = node1_params[2];
 
     const float A = new_ts->m_refX - ts->m_refX;
     const float B = (0.5f) * A * A;
@@ -206,7 +206,7 @@ TRACCC_HOST_DEVICE inline bool kf_update(
 
     new_ts->m_c = ts->m_c;
     new_ts->m_s = ts->m_s;
-    new_ts->m_head_node_type = (node1_params.w < 0);
+    new_ts->m_head_node_type = (node1_params[3] < 0);
 
     return true;
 }
@@ -249,20 +249,20 @@ inline void fit_segments(
     int2 path = d_path_store[path_idx];
 
     const unsigned int nodeidx1 =
-        d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+        d_output_graph[edge_size * static_cast<unsigned int>(path[0]) +
                        gbts_consts::node1];
     traccc::float4 node1 = d_sp_reduced[nodeidx1];
     const unsigned int nodeidx2 =
-        d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+        d_output_graph[edge_size * static_cast<unsigned int>(path[0]) +
                        gbts_consts::node2];
     traccc::float4 node2 = d_sp_reduced[nodeidx2];
 
     state1.initialize(node2, node1);
-    while (path.y >= 0) {
-        path = d_path_store[static_cast<unsigned int>(path.y)];
+    while (path[1] >= 0) {
+        path = d_path_store[static_cast<unsigned int>(path[1])];
         node2 =
             d_sp_reduced[d_output_graph[edge_size *
-                                            static_cast<unsigned int>(path.x) +
+                                            static_cast<unsigned int>(path[0]) +
                                         gbts_consts::node2]];
         if (toggle) {
             if (!gbts_detail::kf_update(&state1, &state2, node2,

@@ -30,12 +30,12 @@ TRACCC_HOST_DEVICE inline void count_terminus_edges(
 
     if (globalIndex < nEdges) {
         const short2 out_paths = d_outgoing_paths[globalIndex];
-        if (out_paths.y != -1) {
-            d_outgoing_paths[globalIndex].y = static_cast<short>(
+        if (out_paths[1] != -1) {
+            d_outgoing_paths[globalIndex][1] = static_cast<short>(
                 vecmem::device_atomic_ref<unsigned int>(nPathStoreSizeCounter)
                     .fetch_add(1u));
             vecmem::device_atomic_ref<unsigned int>(nPathsCounter)
-                .fetch_add(static_cast<unsigned int>(out_paths.x));
+                .fetch_add(static_cast<unsigned int>(out_paths[0]));
         }
     }
 }

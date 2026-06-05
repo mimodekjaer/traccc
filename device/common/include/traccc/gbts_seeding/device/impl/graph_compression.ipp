@@ -52,8 +52,8 @@ inline void graph_compression(
     const unsigned int pos = edge_size * static_cast<unsigned int>(newIdx);
 
     const uint2 edge_nodes = d_edge_nodes[globalIndex];
-    d_output_graph[pos + gbts_consts::node1] = d_orig_node_index[edge_nodes.x];
-    d_output_graph[pos + gbts_consts::node2] = d_orig_node_index[edge_nodes.y];
+    d_output_graph[pos + gbts_consts::node1] = d_orig_node_index[edge_nodes[0]];
+    d_output_graph[pos + gbts_consts::node2] = d_orig_node_index[edge_nodes[1]];
 
     const unsigned char nNei = d_num_neighbours[globalIndex];
     d_output_graph[pos + gbts_consts::nNei] = nNei;

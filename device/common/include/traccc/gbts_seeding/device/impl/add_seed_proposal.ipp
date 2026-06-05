@@ -38,13 +38,13 @@ inline void add_seed_proposal(
         (static_cast<unsigned long long int>(qual) << 32) |
         (static_cast<unsigned long long int>(prop_idx));
 
-    int2 path = make_int2(0, d_seed_proposals[prop_idx].y);
-    while (path.y >= 0 && depth != 0) {
-        path = d_path_store[static_cast<unsigned int>(path.y)];
+    int2 path = make_int2(0, d_seed_proposals[prop_idx][1]);
+    while (path[1] >= 0 && depth != 0) {
+        path = d_path_store[static_cast<unsigned int>(path[1])];
         depth--;
 
         vecmem::device_atomic_ref<unsigned long long int> atomic_bid(
-            d_edge_bids[static_cast<unsigned int>(path.x)]);
+            d_edge_bids[static_cast<unsigned int>(path[0])]);
         // Atomically install our bid if it is the new maximum; fetch_max
         // returns the value it replaced (the competing offer).
         const unsigned long long int competing_offer =

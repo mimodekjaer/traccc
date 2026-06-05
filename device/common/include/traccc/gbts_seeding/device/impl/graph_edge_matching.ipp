@@ -59,7 +59,7 @@ TRACCC_HOST_DEVICE inline void graph_edge_matching(
     const float cut_dcurv_max = d_graph_matching_params.cut_dcurv_max;
     const float cut_tau_ratio_max = d_graph_matching_params.cut_tau_ratio_max;
 
-    const unsigned int sharedNode = d_edge_nodes[globalIndex].x;
+    const unsigned int sharedNode = d_edge_nodes[globalIndex][0];
 
     const unsigned int link_begin = d_num_outgoing_edges[sharedNode];
     // the number of edges leaving the sharedNode
@@ -71,9 +71,9 @@ TRACCC_HOST_DEVICE inline void graph_edge_matching(
 
     const gbts_edge4 params1 = d_edge_params[globalIndex];  // [exp_eta, curv,
                                                             //  phi_z, phi_w]
-    const float uat_2 = 1.0f / gbts_edge_to_float(params1.x);
-    const float Phi2 = gbts_edge_to_float(params1.z);
-    const float curv2 = gbts_edge_to_float(params1.y);
+    const float uat_2 = 1.0f / gbts_edge_to_float(params1[0]);
+    const float Phi2 = gbts_edge_to_float(params1[2]);
+    const float curv2 = gbts_edge_to_float(params1[1]);
 
     const unsigned int nei_pos = nMaxNei * globalIndex;
 
@@ -89,17 +89,17 @@ TRACCC_HOST_DEVICE inline void graph_edge_matching(
 
         const gbts_edge4 params2 = d_edge_params[edge2_idx];
 
-        const float tau_ratio = gbts_edge_to_float(params2.x) * uat_2 - 1.0f;
+        const float tau_ratio = gbts_edge_to_float(params2[0]) * uat_2 - 1.0f;
         if (fabsf(tau_ratio) > cut_tau_ratio_max) {  // bad match
             continue;
         }
 
-        const float dPhi = phi_wrap(Phi2 - gbts_edge_to_float(params2.w));
+        const float dPhi = phi_wrap(Phi2 - gbts_edge_to_float(params2[3]));
         if (fabsf(dPhi) > cut_dphi_max) {
             continue;
         }
 
-        const float dcurv = curv2 - gbts_edge_to_float(params2.y);
+        const float dcurv = curv2 - gbts_edge_to_float(params2[1]);
         if (fabsf(dcurv) > cut_dcurv_max) {
             continue;
         }

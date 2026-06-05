@@ -63,7 +63,7 @@ inline void bin_sp(
 
     // --- Stage 1: bin_sp_by_layer ------------------------------------------
     const float4 sp = reducedSP[globalIndex];
-    if (sp.w < -CHAR_MAX) {
+    if (sp[3] < -CHAR_MAX) {
         return;
     }
     const unsigned short layerIdx = spacepointsLayer[globalIndex];
@@ -87,8 +87,8 @@ inline void bin_sp(
         const std::pair<float, float> layerGeo = d_layer_geo[layerIdx_u];
         const float min_eta = layerGeo.first;
         const float eta_bin_width = layerGeo.second;
-        const float r = sqrtf(sp.x * sp.x + sp.y * sp.y);
-        const float t1 = sp.z / r;
+        const float r = sqrtf(sp[0] * sp[0] + sp[1] * sp[1]);
+        const float t1 = sp[2] / r;
         const float eta = -logf(sqrtf(1.0f + t1 * t1) - t1);
         const unsigned int binIdx = static_cast<unsigned int>(
             fmaxf(0.0f, fminf((eta - min_eta) / eta_bin_width,
@@ -100,7 +100,7 @@ inline void bin_sp(
     // --- Stage 3: eta_phi_histo (uses local `sp`, no re-read) --------------
     const float inv_phiSliceWidth =
         1.0f / (traccc::device::TWO_PI_F / static_cast<float>(nPhiBins));
-    const float Phi = atan2f(sp.y, sp.x);
+    const float Phi = atan2f(sp[1], sp[0]);
     unsigned int phiIdx = static_cast<unsigned int>(
         (Phi + traccc::device::PI_F) * inv_phiSliceWidth);
     if (phiIdx >= nPhiBins) {

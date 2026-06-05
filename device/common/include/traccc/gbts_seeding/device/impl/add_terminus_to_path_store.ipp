@@ -30,10 +30,10 @@ inline void add_terminus_to_path_store(
         d_outgoing_paths_view);
 
     const short2 out_paths = d_outgoing_paths[globalIndex];
-    if (out_paths.y == -1) {
+    if (out_paths[1] == -1) {
         return;
     }
-    d_path_store[static_cast<unsigned int>(out_paths.y)] =
+    d_path_store[static_cast<unsigned int>(out_paths[1])] =
         make_int2(static_cast<int>(globalIndex), -1);
 }
 

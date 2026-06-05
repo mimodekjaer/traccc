@@ -35,7 +35,7 @@ inline void graph_edge_linking(
     collection_types<unsigned int>::device d_num_outgoing_edges(
         d_num_outgoing_edges_view);
 
-    const unsigned int sharedNode = d_edge_nodes[globalIndex].y;
+    const unsigned int sharedNode = d_edge_nodes[globalIndex][1];
     const unsigned int pos = vecmem::device_atomic_ref<unsigned int>(
                                  d_num_outgoing_edges[sharedNode])
                                  .fetch_sub(1u);
