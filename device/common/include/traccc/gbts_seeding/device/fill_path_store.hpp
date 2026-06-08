@@ -16,7 +16,7 @@
 
 namespace traccc::device {
 
-/// Walk each terminus edge backwards along live levels, growing the path store.
+/// @brief Walk each terminus edge backwards along live levels, growing the path store.
 ///
 /// One block expands nTerminusPerBlock terminus seeds at once using
 /// a shared "live paths" frontier.  At each step the block reads neighbour
@@ -38,10 +38,17 @@ namespace traccc::device {
 /// @param[in]  max_num_neighbours        Maximum neighbours per edge
 /// @param[in]  nPaths                    Upper bound on the number of paths
 ///
+/// Shared-memory scratch for fill_path_store: the block-local stack of live
+/// paths being walked and its running length.
+struct fill_path_store_shared_payload {
+    traccc::uint2* live_paths;
+    int& n_live_paths;
+};
+
 template <concepts::thread_id1 thread_id_t, concepts::barrier barrier_t>
 TRACCC_HOST_DEVICE inline void fill_path_store(
     const thread_id_t& thread_id, const barrier_t& barrier,
-    traccc::uint2* live_paths, int& n_live_paths,
+    const fill_path_store_shared_payload& shared,
     collection_types<int2>::view d_path_store_view,
     const collection_types<unsigned int>::const_view& d_output_graph_view,
     const collection_types<unsigned char>::const_view& d_levels_view,

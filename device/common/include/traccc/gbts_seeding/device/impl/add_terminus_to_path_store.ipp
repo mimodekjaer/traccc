@@ -19,21 +19,16 @@ TRACCC_HOST_DEVICE
 inline void add_terminus_to_path_store(
     const global_index_t globalIndex,
     const collection_types<int2>::view d_path_store_view,
-    const collection_types<short2>::const_view& d_outgoing_paths_view,
-    const unsigned int nEdges) {
-
-    if (globalIndex >= nEdges) {
-        return;
-    }
+    const collection_types<short2>::const_view& d_outgoing_paths_view) {
     collection_types<int2>::device d_path_store(d_path_store_view);
     const collection_types<short2>::const_device d_outgoing_paths(
         d_outgoing_paths_view);
 
     const short2 out_paths = d_outgoing_paths[globalIndex];
-    if (out_paths[1] == -1) {
+    if (out_paths.y == -1) {
         return;
     }
-    d_path_store[static_cast<unsigned int>(out_paths[1])] =
+    d_path_store[static_cast<unsigned int>(out_paths.y)] =
         make_int2(static_cast<int>(globalIndex), -1);
 }
 

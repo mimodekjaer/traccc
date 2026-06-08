@@ -20,7 +20,7 @@
 
 namespace traccc::device {
 
-/// One accepted seed bids on its constituent hits.
+/// @brief One accepted seed bids on its constituent hits.
 ///
 /// Processes one proposal (the grid-stride loop lives in the kernel wrapper):
 /// walks the seed's edges via the compact graph to enumerate hit indices, and

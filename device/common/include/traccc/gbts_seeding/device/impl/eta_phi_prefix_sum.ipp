@@ -19,11 +19,7 @@ inline void eta_phi_prefix_sum(
     const global_index_t globalIndex,
     const collection_types<unsigned int>::const_view& d_eta_node_counter_view,
     const collection_types<unsigned int>::view& d_phi_cusums_view,
-    const unsigned int maxEtaBin, const unsigned int nPhiBins) {
-
-    if (globalIndex >= maxEtaBin) {
-        return;
-    }
+    const unsigned int nPhiBins) {
     if (globalIndex == 0) {
         return;
     }

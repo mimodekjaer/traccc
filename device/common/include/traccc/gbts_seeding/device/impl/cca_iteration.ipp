@@ -77,7 +77,7 @@ TRACCC_HOST_DEVICE inline void cca_iteration(
     }
     if (localChange) {
         if (iter == traccc::device::gbts_consts::max_cca_iter - 1) {
-            d_outgoing_paths[globalIndex][1] = -1;
+            d_outgoing_paths[globalIndex].y = -1;
             d_active_edges[globalIndex] = -1;
         } else {
             d_active_edges[globalIndex] = static_cast<char>(iter + 1u);
@@ -92,10 +92,10 @@ TRACCC_HOST_DEVICE inline void cca_iteration(
                 // calculate the #d_state_store nodes for segment extraction
                 // starting at this edge
                 out_paths = static_cast<short>(
-                    out_paths + 1 + d_outgoing_paths[nextglobalIndex][0]);
+                    out_paths + 1 + d_outgoing_paths[nextglobalIndex].x);
             }
             // flag as not terminus edge
-            d_outgoing_paths[nextglobalIndex][1] = -1;
+            d_outgoing_paths[nextglobalIndex].y = -1;
         }
         // flag as long enough segement to become a seed
         d_outgoing_paths[globalIndex] =

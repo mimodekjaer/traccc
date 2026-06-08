@@ -17,7 +17,7 @@
 
 namespace traccc::device {
 
-/// Compute the per-eta-bin minimum and maximum radius.
+/// @brief Compute the per-eta-bin minimum and maximum radius.
 ///
 /// One thread per eta-bin scans the bin's node range and writes the (rmin,
 /// rmax) pair into d_bin_rads_view; the host uses these to estimate the
@@ -27,15 +27,13 @@ namespace traccc::device {
 /// @param[in]  d_eta_bin_views_view    Per-eta (begin, end) node range
 /// @param[in]  d_node_params_view      Sorted node geometry tuples (r is read)
 /// @param[out] d_bin_rads_view         Per-eta (rmin, rmax) pair
-/// @param[in]  maxEtaBin               Number of eta bins
 ///
 TRACCC_HOST_DEVICE
 inline void minmax_rad(
     const global_index_t globalIndex,
     const collection_types<unsigned int>::const_view& d_eta_bin_views_view,
     const collection_types<float4>::const_view& d_node_params_view,
-    const collection_types<float>::view& d_bin_rads_view,
-    const unsigned int maxEtaBin);
+    const collection_types<float>::view& d_bin_rads_view);
 
 }  // namespace traccc::device
 

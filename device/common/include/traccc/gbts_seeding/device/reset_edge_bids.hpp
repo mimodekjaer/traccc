@@ -17,7 +17,7 @@
 
 namespace traccc::device {
 
-/// Mark a losing seed proposal against the current edge bids.
+/// @brief Mark a losing seed proposal against the current edge bids.
 ///
 /// Processes one proposal (the grid-stride loop lives in the kernel wrapper):
 /// compares it against the winning bid recorded in d_edge_bids_view, and either

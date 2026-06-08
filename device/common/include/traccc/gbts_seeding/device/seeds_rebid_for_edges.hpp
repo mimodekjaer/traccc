@@ -20,7 +20,7 @@
 
 namespace traccc::device {
 
-/// Have one surviving seed re-bid for every edge along its path.
+/// @brief Have one surviving seed re-bid for every edge along its path.
 ///
 /// Processes one proposal (the grid-stride loop lives in the kernel wrapper):
 /// for every edge on its path-store chain it atomically compares its packed bid

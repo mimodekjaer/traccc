@@ -66,10 +66,14 @@ __global__ void count_sp_by_layer(
     const unsigned long int surfaceMapSize,
     const gbts_sp_counting_params sp_counting_params) {
 
-    device::count_sp_by_layer(
-        details::global_index1(), spacepoints, measurements, volumeToLayerMap,
-        surfaceToLayerMap, layerType, reducedSP, layerCounts, spacepointsLayer,
-        nSp, volumeMapSize, surfaceMapSize, sp_counting_params);
+    for (unsigned int sp_idx = details::global_index1(); sp_idx < nSp;
+         sp_idx += blockDim.x * gridDim.x) {
+        device::count_sp_by_layer(sp_idx, spacepoints, measurements,
+                                  volumeToLayerMap, surfaceToLayerMap, layerType,
+                                  reducedSP, layerCounts, spacepointsLayer,
+                                  volumeMapSize, surfaceMapSize,
+                                  sp_counting_params);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::bin_sp
@@ -87,9 +91,10 @@ __global__ void bin_sp(
     const collection_types<unsigned int>::view eta_phi_histo,
     const unsigned int nSp, const unsigned int nPhiBins) {
 
-    for (unsigned int idx = details::global_index1(); idx < nSp;
-         idx += blockDim.x * gridDim.x) {
-        device::bin_sp(idx, sp_params, reducedSP, layerCounts, spacepointsLayer,
+    for (unsigned int sp_idx = details::global_index1(); sp_idx < nSp;
+         sp_idx += blockDim.x * gridDim.x) {
+        device::bin_sp(sp_idx, sp_params, reducedSP, layerCounts,
+                       spacepointsLayer,
                        original_sp_idx, layer_info, layer_geo, node_eta_index,
                        node_phi_index, eta_phi_histo, nPhiBins);
     }
@@ -102,8 +107,11 @@ __global__ void eta_phi_counting(
     const collection_types<unsigned int>::view phi_cusums,
     const unsigned int nEtaBins, const unsigned int nPhiBins) {
 
-    device::eta_phi_counting(details::global_index1(), eta_phi_histo,
-                             eta_node_counter, phi_cusums, nEtaBins, nPhiBins);
+    for (unsigned int eta_bin_idx = details::global_index1();
+         eta_bin_idx < nEtaBins; eta_bin_idx += blockDim.x * gridDim.x) {
+        device::eta_phi_counting(eta_bin_idx, eta_phi_histo, eta_node_counter,
+                                 phi_cusums, nPhiBins);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::eta_phi_prefix_sum
@@ -112,8 +120,11 @@ __global__ void eta_phi_prefix_sum(
     const collection_types<unsigned int>::view phi_cusums,
     const unsigned int nEtaBins, const unsigned int nPhiBins) {
 
-    device::eta_phi_prefix_sum(details::global_index1(), eta_node_counter,
-                               phi_cusums, nEtaBins, nPhiBins);
+    for (unsigned int eta_bin_idx = details::global_index1();
+         eta_bin_idx < nEtaBins; eta_bin_idx += blockDim.x * gridDim.x) {
+        device::eta_phi_prefix_sum(eta_bin_idx, eta_node_counter, phi_cusums,
+                                   nPhiBins);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::node_sorting
@@ -130,9 +141,9 @@ __global__ void node_sorting(
     const gbts_node_sorting_params node_sorting_params,
     const unsigned int nNodes, const unsigned int nPhiBins) {
 
-    for (unsigned int idx = details::global_index1(); idx < nNodes;
-         idx += blockDim.x * gridDim.x) {
-        device::node_sorting(idx, sp_params, node_eta_index, node_phi_index,
+    for (unsigned int node_idx = details::global_index1(); node_idx < nNodes;
+         node_idx += blockDim.x * gridDim.x) {
+        device::node_sorting(node_idx, sp_params, node_eta_index, node_phi_index,
                              phi_cusums, node_params, node_phi, node_index,
                              original_sp_idx, tau_lut, node_sorting_params,
                              nPhiBins);
@@ -145,8 +156,10 @@ __global__ void minmax_rad(
     const collection_types<float4>::const_view node_params,
     const collection_types<float>::view bin_rads, const unsigned int nEtaBins) {
 
-    device::minmax_rad(details::global_index1(), eta_bin_views, node_params,
-                       bin_rads, nEtaBins);
+    for (unsigned int eta_bin_idx = details::global_index1();
+         eta_bin_idx < nEtaBins; eta_bin_idx += blockDim.x * gridDim.x) {
+        device::minmax_rad(eta_bin_idx, eta_bin_views, node_params, bin_rads);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -168,11 +181,11 @@ __global__ void graph_edge_making(
     __shared__ float phi[traccc::device::gbts_consts::node_buffer_length];
     __shared__ float4
         node_pack[traccc::device::gbts_consts::node_buffer_length];
-    const traccc::cuda::barrier bar;
+    const traccc::cuda::barrier barrier;
     const details::thread_id1 thread_id;
 
     device::graph_edge_making(
-        thread_id, bar, phi, node_pack, bin_pair_views, bin_pair_dphi,
+        thread_id, barrier, {phi, node_pack}, bin_pair_views, bin_pair_dphi,
         node_params, node_phi, edge_making_params, *nEdgesCounter, edge_nodes,
         edge_params, num_outgoing_edges, nMaxEdges, nPhiBins);
 }
@@ -184,9 +197,9 @@ __global__ void graph_edge_linking(
     const collection_types<unsigned int>::view num_outgoing_edges,
     const unsigned int nEdges) {
 
-    for (unsigned int idx = details::global_index1(); idx < nEdges;
-         idx += blockDim.x * gridDim.x) {
-        device::graph_edge_linking(idx, edge_nodes, edge_links,
+    for (unsigned int edge_idx = details::global_index1(); edge_idx < nEdges;
+         edge_idx += blockDim.x * gridDim.x) {
+        device::graph_edge_linking(edge_idx, edge_nodes, edge_links,
                                    num_outgoing_edges);
     }
 }
@@ -204,9 +217,9 @@ __global__ void graph_edge_matching(
     unsigned int* nConnectionsCounter, const unsigned int nEdges,
     const unsigned int nMaxNei) {
 
-    for (unsigned int idx = details::global_index1(); idx < nEdges;
-         idx += blockDim.x * gridDim.x) {
-        device::graph_edge_matching(idx, edge_matching_params, edge_params,
+    for (unsigned int edge_idx = details::global_index1(); edge_idx < nEdges;
+         edge_idx += blockDim.x * gridDim.x) {
+        device::graph_edge_matching(edge_idx, edge_matching_params, edge_params,
                                     edge_nodes, num_outgoing_edges, edge_links,
                                     num_neighbours, neighbours, reIndexer,
                                     *nConnectionsCounter, nMaxNei);
@@ -218,8 +231,10 @@ __global__ void edge_re_indexing(collection_types<int>::view reIndexer,
                                  unsigned int* nConnectedEdgesCounter,
                                  const unsigned int nEdges) {
 
-    device::edge_re_indexing(details::global_index1(), reIndexer,
-                             *nConnectedEdgesCounter, nEdges);
+    for (unsigned int edge_idx = details::global_index1(); edge_idx < nEdges;
+         edge_idx += blockDim.x * gridDim.x) {
+        device::edge_re_indexing(edge_idx, reIndexer, *nConnectedEdgesCounter);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::graph_compression
@@ -232,9 +247,12 @@ __global__ void graph_compression(
     const collection_types<unsigned int>::view output_graph,
     const unsigned int nEdges, const unsigned int nMaxNei) {
 
-    device::graph_compression(details::global_index1(), orig_node_index,
-                              edge_nodes, num_neighbours, neighbours, reIndexer,
-                              output_graph, nEdges, nMaxNei);
+    for (unsigned int edge_idx = details::global_index1(); edge_idx < nEdges;
+         edge_idx += blockDim.x * gridDim.x) {
+        device::graph_compression(edge_idx, orig_node_index, edge_nodes,
+                                  num_neighbours, neighbours, reIndexer,
+                                  output_graph, nMaxNei);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -264,9 +282,9 @@ __global__ void count_terminus_edges(
     unsigned int* nPathsCounter, unsigned int* nPathStoreSizeCounter,
     const unsigned int nEdges) {
 
-    for (unsigned int idx = details::global_index1(); idx < nEdges;
-         idx += blockDim.x * gridDim.x) {
-        device::count_terminus_edges(idx, outgoing_paths, *nPathsCounter,
+    for (unsigned int edge_idx = details::global_index1(); edge_idx < nEdges;
+         edge_idx += blockDim.x * gridDim.x) {
+        device::count_terminus_edges(edge_idx, outgoing_paths, *nPathsCounter,
                                      *nPathStoreSizeCounter);
     }
 }
@@ -277,8 +295,10 @@ __global__ void add_terminus_to_path_store(
     const collection_types<short2>::const_view outgoing_paths,
     const unsigned int nEdges) {
 
-    device::add_terminus_to_path_store(details::global_index1(), path_store,
-                                       outgoing_paths, nEdges);
+    for (unsigned int edge_idx = details::global_index1(); edge_idx < nEdges;
+         edge_idx += blockDim.x * gridDim.x) {
+        device::add_terminus_to_path_store(edge_idx, path_store, outgoing_paths);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::fill_path_store
@@ -293,11 +313,11 @@ __global__ void fill_path_store(
     __shared__ traccc::uint2
         live_paths[traccc::device::gbts_consts::live_path_buffer];
     __shared__ int n_live_paths;
-    const traccc::cuda::barrier bar;
+    const traccc::cuda::barrier barrier;
     const details::thread_id1 thread_id;
 
     device::fill_path_store(
-        thread_id, bar, live_paths, n_live_paths, path_store, output_graph,
+        thread_id, barrier, {live_paths, n_live_paths}, path_store, output_graph,
         levels, *nPathStoreSizeCounter, nTerminus, nTerminusPerBlock,
         max_num_neighbours, nReachablePaths);
 }
@@ -315,10 +335,15 @@ __global__ void fit_segments(
     const unsigned int max_num_neighbours,
     const gbts_seed_extraction_params seed_extraction_params) {
 
-    device::fit_segments(details::global_index1(), reducedSP, output_graph,
-                         path_store, seed_proposals, edge_bids, seed_ambiguity,
-                         *nPathStoreSize, *nPropsCounter, nTerminusEdges,
-                         minLevel, max_num_neighbours, seed_extraction_params);
+    const unsigned int store_size = *nPathStoreSize;
+    for (unsigned int path_idx = details::global_index1();
+         path_idx + nTerminusEdges < store_size;
+         path_idx += blockDim.x * gridDim.x) {
+        device::fit_segments(path_idx, reducedSP, output_graph, path_store,
+                             seed_proposals, edge_bids, seed_ambiguity,
+                             *nPropsCounter, nTerminusEdges, minLevel,
+                             max_num_neighbours, seed_extraction_params);
+    }
 }
 
 /// CUDA kernel for running @c traccc::device::reset_edge_bids
@@ -329,9 +354,9 @@ __global__ void reset_edge_bids(
     const collection_types<char>::view seed_ambiguity,
     const unsigned int nProps, unsigned int* nRejectedPropsCounter) {
 
-    for (unsigned int idx = details::global_index1(); idx < nProps;
-         idx += blockDim.x * gridDim.x) {
-        device::reset_edge_bids(idx, path_store, seed_proposals, edge_bids,
+    for (unsigned int prop_idx = details::global_index1(); prop_idx < nProps;
+         prop_idx += blockDim.x * gridDim.x) {
+        device::reset_edge_bids(prop_idx, path_store, seed_proposals, edge_bids,
                                 seed_ambiguity, *nRejectedPropsCounter);
     }
 }
@@ -345,9 +370,10 @@ __global__ void seeds_rebid_for_edges(
     const unsigned int nProps, unsigned int* nRejectedPropsCounter,
     const bool first_round) {
 
-    for (unsigned int idx = details::global_index1(); idx < nProps;
-         idx += blockDim.x * gridDim.x) {
-        device::seeds_rebid_for_edges(idx, path_store, seed_proposals, edge_bids,
+    for (unsigned int prop_idx = details::global_index1(); prop_idx < nProps;
+         prop_idx += blockDim.x * gridDim.x) {
+        device::seeds_rebid_for_edges(prop_idx, path_store, seed_proposals,
+                                      edge_bids,
                                       seed_ambiguity, *nRejectedPropsCounter,
                                       first_round);
     }
@@ -362,9 +388,10 @@ __global__ void seeds_bid_for_hits(
     const collection_types<unsigned long long int>::view hit_bids,
     const unsigned int nProps, const unsigned int edge_size) {
 
-    for (unsigned int idx = details::global_index1(); idx < nProps;
-         idx += blockDim.x * gridDim.x) {
-        device::seeds_bid_for_hits(idx, output_graph, seed_proposals, path_store,
+    for (unsigned int prop_idx = details::global_index1(); prop_idx < nProps;
+         prop_idx += blockDim.x * gridDim.x) {
+        device::seeds_bid_for_hits(prop_idx, output_graph, seed_proposals,
+                                   path_store,
                                    seed_ambiguity, hit_bids, edge_size);
     }
 }
@@ -383,10 +410,10 @@ __global__ void gbts_seed_conversion(
     const float best_hit_frac, const float tight_bid_cot_threshold,
     const bool use_dropout) {
 
-    for (unsigned int idx = details::global_index1(); idx < nProps;
-         idx += blockDim.x * gridDim.x) {
+    for (unsigned int prop_idx = details::global_index1(); prop_idx < nProps;
+         prop_idx += blockDim.x * gridDim.x) {
         device::gbts_seed_conversion(
-            idx, seed_proposals, seed_ambiguity, path_store, output_graph,
+            prop_idx, seed_proposals, seed_ambiguity, path_store, output_graph,
             sp_params, output_seeds, hit_bids, max_num_neighbours, dcurv_cut_m,
             force_dropout_max_curv_m, best_hit_frac, tight_bid_cot_threshold,
             use_dropout);
@@ -421,8 +448,7 @@ void gbts_seeding_algorithm::count_sp_by_layer_kernel(
         payload.layerCounts, payload.spacepointsLayer, payload.nSp,
         payload.volumeMapSize, payload.surfaceMapSize,
         payload.sp_counting_params);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::bin_sp_kernel(
@@ -435,8 +461,7 @@ void gbts_seeding_algorithm::bin_sp_kernel(
         payload.spacepointsLayer, payload.original_sp_idx, payload.layer_info,
         payload.layer_geo, payload.node_eta_index, payload.node_phi_index,
         payload.eta_phi_histo, payload.nSp, payload.nPhiBins);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::eta_phi_counting_kernel(
@@ -448,8 +473,7 @@ void gbts_seeding_algorithm::eta_phi_counting_kernel(
                                 details::get_stream(stream())>>>(
         payload.eta_phi_histo, payload.eta_node_counter, payload.phi_cusums,
         payload.nEtaBins, payload.nPhiBins);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::eta_phi_prefix_sum_kernel(
@@ -461,8 +485,7 @@ void gbts_seeding_algorithm::eta_phi_prefix_sum_kernel(
                                   details::get_stream(stream())>>>(
         payload.eta_node_counter, payload.phi_cusums, payload.nEtaBins,
         payload.nPhiBins);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::node_sorting_kernel(
@@ -476,8 +499,7 @@ void gbts_seeding_algorithm::node_sorting_kernel(
             payload.phi_cusums, payload.node_params, payload.node_phi,
             payload.node_index, payload.original_sp_idx, payload.tau_lut,
             payload.node_sorting_params, payload.nNodes, payload.nPhiBins);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::minmax_rad_kernel(
@@ -489,8 +511,7 @@ void gbts_seeding_algorithm::minmax_rad_kernel(
         minmax_rad<<<n_blocks, n_threads, 0, details::get_stream(stream())>>>(
             payload.eta_bin_views, payload.node_params, payload.bin_rads,
             payload.nEtaBins);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::graph_edge_making_kernel(
@@ -504,8 +525,7 @@ void gbts_seeding_algorithm::graph_edge_making_kernel(
         payload.node_phi, payload.edge_making_params, payload.nEdgesCounter,
         payload.edge_nodes, payload.edge_params, payload.num_outgoing_edges,
         payload.nMaxEdges, payload.nPhiBins);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::graph_edge_linking_kernel(
@@ -517,8 +537,7 @@ void gbts_seeding_algorithm::graph_edge_linking_kernel(
                                   details::get_stream(stream())>>>(
         payload.edge_nodes, payload.edge_links, payload.num_outgoing_edges,
         payload.nEdges);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::graph_edge_matching_kernel(
@@ -532,8 +551,7 @@ void gbts_seeding_algorithm::graph_edge_matching_kernel(
         payload.num_outgoing_edges, payload.edge_links, payload.num_neighbours,
         payload.neighbours, payload.reIndexer, payload.nConnectionsCounter,
         payload.nEdges, payload.nMaxNei);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::edge_re_indexing_kernel(
@@ -544,8 +562,7 @@ void gbts_seeding_algorithm::edge_re_indexing_kernel(
     kernels::edge_re_indexing<<<n_blocks, n_threads, 0,
                                 details::get_stream(stream())>>>(
         payload.reIndexer, payload.nConnectedEdgesCounter, payload.nEdges);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::graph_compression_kernel(
@@ -558,8 +575,7 @@ void gbts_seeding_algorithm::graph_compression_kernel(
         payload.orig_node_index, payload.edge_nodes, payload.num_neighbours,
         payload.neighbours, payload.reIndexer, payload.output_graph,
         payload.nEdges, payload.nMaxNei);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::cca_iteration_kernel(
@@ -573,8 +589,7 @@ void gbts_seeding_algorithm::cca_iteration_kernel(
         payload.output_graph, payload.levels, payload.active_edges,
         payload.outgoing_paths, payload.iter, payload.nConnectedEdges,
         payload.max_num_neighbours, payload.minLevel);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::count_terminus_edges_kernel(
@@ -586,8 +601,7 @@ void gbts_seeding_algorithm::count_terminus_edges_kernel(
                                     details::get_stream(stream())>>>(
         payload.outgoing_paths, payload.nPathsCounter,
         payload.nPathStoreSizeCounter, payload.nConnectedEdges);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::add_terminus_to_path_store_kernel(
@@ -632,8 +646,7 @@ void gbts_seeding_algorithm::fit_segments_kernel(
             payload.nPathStoreSize, payload.nPropsCounter,
             payload.nTerminusEdges, payload.minLevel,
             payload.max_num_neighbours, payload.seed_extraction_params);
-    //stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 void gbts_seeding_algorithm::reset_edge_bids_kernel(
@@ -689,8 +702,7 @@ void gbts_seeding_algorithm::gbts_seed_conversion_kernel(
         payload.seed_ambi_params.best_hit_frac,
         payload.seed_ambi_params.tight_bid_cot_threshold,
         payload.seed_ambi_params.use_dropout);
-    stream().synchronize();
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());//
 }
 
 }  // namespace traccc::cuda

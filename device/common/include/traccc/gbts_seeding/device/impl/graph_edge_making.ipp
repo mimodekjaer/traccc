@@ -29,24 +29,24 @@ namespace gbts_detail {
 // and, if it passes, append it to the edge list. Single-use helper for
 // graph_edge_making, kept inline here. Node params are float4 (tau_min,
 // tau_max, r, z).
-template <typename edge_nodes_t, typename edge_params_t, typename counts_t>
 TRACCC_HOST_DEVICE inline void gbts_checks(
     const float4 node_params_1, const float4 node_params_2,
-    edge_nodes_t& d_edge_nodes, edge_params_t& d_edge_params,
-    counts_t& d_num_outgoing_edges, unsigned int& nEdgesCounter,
-    const unsigned int globalIdx2, const unsigned int begin_bin1,
-    const unsigned int n1Idx, const float phi1, const float phi2,
-    const float deltaPhi, const gbts_edge_making_params& ap,
+    collection_types<uint2>::device& d_edge_nodes,
+    collection_types<gbts_edge4>::device& d_edge_params,
+    collection_types<unsigned int>::device& d_num_outgoing_edges,
+    unsigned int& nEdgesCounter, const unsigned int globalIdx2,
+    const unsigned int begin_bin1, const unsigned int n1Idx, const float phi1,
+    const float phi2, const float deltaPhi, const gbts_edge_making_params& ap,
     const unsigned int nMaxEdges) {
 
-    const float tau_min1 = node_params_1[0];
-    const float tau_max1 = node_params_1[1];
-    const float r1 = node_params_1[2];
-    const float z1 = node_params_1[3];
-    const float tau_min2 = node_params_2[0];
-    const float tau_max2 = node_params_2[1];
-    const float r2 = node_params_2[2];
-    const float z2 = node_params_2[3];
+    const float tau_min1 = node_params_1.x;
+    const float tau_max1 = node_params_1.y;
+    const float r1 = node_params_1.z;
+    const float z1 = node_params_1.w;
+    const float tau_min2 = node_params_2.x;
+    const float tau_max2 = node_params_2.y;
+    const float r2 = node_params_2.z;
+    const float z2 = node_params_2.w;
     const float dr = r2 - r1;
 
     if (dr < ap.minDeltaRadius) {
@@ -94,7 +94,8 @@ TRACCC_HOST_DEVICE inline void gbts_checks(
         d_edge_nodes[nEdges] = make_uint2(globalIdx2, begin_bin1 + n1Idx);
         d_edge_params[nEdges] =
             gbts_make_edge4(exp_eta, curv, phi2 + curv * r2, phi1 + curv * r1);
-        // edge params: (exp_eta, curvature, phi at node2, phi at node1)
+        // edge params: (exp(-eta), curvature, extrapolated phi at node2 (r2),
+        //               extrapolated phi at node1 (r1))
     }
 }
 
@@ -102,8 +103,8 @@ TRACCC_HOST_DEVICE inline void gbts_checks(
 
 template <concepts::thread_id1 thread_id_t, concepts::barrier barrier_t>
 TRACCC_HOST_DEVICE inline void graph_edge_making(
-    const thread_id_t& thread_id, const barrier_t& barrier, float* phi,
-    float4* node_params,
+    const thread_id_t& thread_id, const barrier_t& barrier,
+    const graph_edge_making_shared_payload& shared,
     const collection_types<unsigned int>::const_view& d_bin_pair_views_view,
     const collection_types<float>::const_view& d_bin_pair_dphi_view,
     const collection_types<float4>::const_view& d_node_params_view,
@@ -140,17 +141,17 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
     const unsigned int num_nodes2 =
         d_bin_pair_views[4u * blockIndex + 3u] - begin_bin2;
 
-    for (unsigned int idx = threadIndex; idx < num_nodes1; idx += blockSize) {
+    for (unsigned int node1_idx = threadIndex; node1_idx < num_nodes1; node1_idx += blockSize) {
         // loading a chunk of nodes1 into shared mem buffers
-        const unsigned int gidx = idx + begin_bin1;
-        node_params[idx] = d_node_params[gidx];
-        phi[idx] = d_node_phi[gidx];
+        const unsigned int gidx = node1_idx + begin_bin1;
+        shared.node_pack[node1_idx] = d_node_params[gidx];
+        shared.phi[node1_idx] = d_node_phi[gidx];
     }
 
     barrier.blockBarrier();
 
-    const float phi0 = phi[0];
-    const float phiN = phi[num_nodes1 - 1u];
+    const float phi0 = shared.phi[0];
+    const float phiN = shared.phi[num_nodes1 - 1u];
     const float phi_bin_width =
         traccc::device::TWO_PI_F / static_cast<float>(nPhiBins);
     const float break_threshold =
@@ -205,7 +206,7 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
         const float4 np2 = d_node_params[globalIdx2];
         if (!boundary) {
             for (; n1Idx < num_nodes1; n1Idx++) {
-                const float phi1 = phi[n1Idx];
+                const float phi1 = shared.phi[n1Idx];
 
                 if (phi1 > max_phi1) {
                     break;
@@ -215,7 +216,7 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
                 }
                 last_n1 = n1Idx;
 
-                const float4 np1 = node_params[n1Idx];
+                const float4 np1 = shared.node_pack[n1Idx];
                 gbts_detail::gbts_checks(
                     np1, np2, d_edge_nodes, d_edge_params, d_num_outgoing_edges,
                     nEdgesCounter, globalIdx2, begin_bin1, n1Idx, phi1, phi2,
@@ -223,13 +224,13 @@ TRACCC_HOST_DEVICE inline void graph_edge_making(
             }
         } else {
             for (; n1Idx < num_nodes1; n1Idx++) {
-                const float phi1 = phi[n1Idx];
+                const float phi1 = shared.phi[n1Idx];
                 if (phi1 > max_phi1 && phi1 < min_phi1) {
                     continue;
                 }
                 last_n1 = n1Idx;
 
-                const float4 np1 = node_params[n1Idx];
+                const float4 np1 = shared.node_pack[n1Idx];
                 gbts_detail::gbts_checks(
                     np1, np2, d_edge_nodes, d_edge_params, d_num_outgoing_edges,
                     nEdgesCounter, globalIdx2, begin_bin1, n1Idx, phi1, phi2,

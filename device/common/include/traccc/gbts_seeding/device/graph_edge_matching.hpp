@@ -16,7 +16,7 @@
 
 namespace traccc::device {
 
-/// For each edge, find compatible neighbour edges sharing its outer node.
+/// @brief For each edge, find compatible neighbour edges sharing its outer node.
 ///
 /// One thread per edge pair-tests the edge against every edge leaving its outer
 /// node using the packed edge parameters, recording up to nMaxNei accepted

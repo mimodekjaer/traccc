@@ -97,17 +97,17 @@ struct edgeState {
         const traccc::float4& node1_params,
         const traccc::float4& node2_params) {
         m_J = 0.0f;
-        m_head_node_type = (node1_params[3] < 0);
+        m_head_node_type = (node1_params.w < 0);
 
         // Chord of the doublet in the transverse plane: direction (m_c, m_s).
-        const float dx = node1_params[0] - node2_params[0];
-        const float dy = node1_params[1] - node2_params[1];
+        const float dx = node1_params.x - node2_params.x;
+        const float dy = node1_params.y - node2_params.y;
         const float L = sqrtf(dx * dx + dy * dy);
 
-        const float r1 = sqrtf(node1_params[0] * node1_params[0] +
-                               node1_params[1] * node1_params[1]);
-        const float r2 = sqrtf(node2_params[0] * node2_params[0] +
-                               node2_params[1] * node2_params[1]);
+        const float r1 = sqrtf(node1_params.x * node1_params.x +
+                               node1_params.y * node1_params.y);
+        const float r2 = sqrtf(node2_params.x * node2_params.x +
+                               node2_params.y * node2_params.y);
 
         // Frozen rotation: m_c = cos, m_s = sin of the chord direction.
         m_s = dy / L;
@@ -115,21 +115,21 @@ struct edgeState {
 
         // Reference point of the fit = the inner node: radius and along-chord xi.
         m_refY = r2;
-        m_refX = node2_params[0] * m_c + node2_params[1] * m_s;
+        m_refX = node2_params.x * m_c + node2_params.y * m_s;
 
         // x-state = [perp position, slope, curvature]. Position is the reference
         // node's perpendicular (eta) coordinate; slope and curvature are seeded
         // to ZERO = start as a straight track along the chord, to be bent by the
         // hits added in kf_update.
-        m_X[0] = -node2_params[0] * m_s + node2_params[1] * m_c;
+        m_X[0] = -node2_params.x * m_s + node2_params.y * m_c;
         m_X[1] = 0.0f;
         m_X[2] = 0.0f;
 
         // y-state = [z, tau]. z from the reference node; tau = dz/dr measured
         // directly from the two seed nodes (already a good estimate -> the real
         // slope, not 0).
-        m_Y[0] = node2_params[2];
-        m_Y[1] = (node1_params[2] - node2_params[2]) / (r1 - r2);
+        m_Y[0] = node2_params.z;
+        m_Y[1] = (node1_params.z - node2_params.z) / (r1 - r2);
 
         // Prior covariances. Each entry is a VARIANCE (prior 1-sigma = sqrt).
         // Off-diagonals start at 0 (uncorrelated). The values are loose priors:
@@ -176,7 +176,7 @@ TRACCC_HOST_DEVICE inline bool kf_update(
     const float tau2 = ts->m_Y[1] * ts->m_Y[1];
     const float invSin2 = 1 + tau2;
 
-    const float lenCorr = (node1_params[3] != -1) ? invSin2 : invSin2 / tau2;
+    const float lenCorr = (node1_params.w != -1) ? invSin2 : invSin2 / tau2;
     const float minPtFrac = fabsf(ts->m_X[2]) * KF_params.inv_max_curvature;
 
     const float corrMS = KF_params.sigmaMS * minPtFrac;
@@ -186,13 +186,13 @@ TRACCC_HOST_DEVICE inline bool kf_update(
     const float m_Cy11 = ts->m_Cy(1, 1) + sigma2;
 
     float mx, my;
-    const float r = sqrtf(node1_params[0] * node1_params[0] +
-                          node1_params[1] * node1_params[1]);
+    const float r = sqrtf(node1_params.x * node1_params.x +
+                          node1_params.y * node1_params.y);
 
-    new_ts->m_refX = node1_params[0] * ts->m_c + node1_params[1] * ts->m_s;
-    mx = -node1_params[0] * ts->m_s + node1_params[1] * ts->m_c;
+    new_ts->m_refX = node1_params.x * ts->m_c + node1_params.y * ts->m_s;
+    mx = -node1_params.x * ts->m_s + node1_params.y * ts->m_c;
     new_ts->m_refY = r;
-    my = node1_params[2];
+    my = node1_params.z;
 
     const float A = new_ts->m_refX - ts->m_refX;
     const float B = (0.5f) * A * A;
@@ -282,7 +282,7 @@ TRACCC_HOST_DEVICE inline bool kf_update(
 
     new_ts->m_c = ts->m_c;
     new_ts->m_s = ts->m_s;
-    new_ts->m_head_node_type = (node1_params[3] < 0);
+    new_ts->m_head_node_type = (node1_params.w < 0);
 
     return true;
 }
@@ -298,7 +298,7 @@ inline void fit_segments(
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
     const collection_types<char>::view d_seed_ambiguity_view,
-    const unsigned int nPathStoreSize, unsigned int& nPropsCounter,
+    unsigned int& nPropsCounter,
     const unsigned int nTerminusEdges, const unsigned char minLevel,
     const unsigned int max_num_neighbours,
     const gbts_seed_extraction_params& seed_extraction_params) {
@@ -310,9 +310,6 @@ inline void fit_segments(
     const collection_types<int2>::const_device d_path_store(d_path_store_view);
 
     const unsigned int path_idx = globalIndex + nTerminusEdges;
-    if (path_idx >= nPathStoreSize) {
-        return;
-    }
     // Row-major output graph: each edge owns a contiguous block of
     // edge_size = 2 + 1 + max_num_neighbours ints.
     const unsigned int edge_size = 2u + 1u + max_num_neighbours;
@@ -325,20 +322,20 @@ inline void fit_segments(
     int2 path = d_path_store[path_idx];
 
     const unsigned int nodeidx1 =
-        d_output_graph[edge_size * static_cast<unsigned int>(path[0]) +
+        d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
                        gbts_consts::node1];
     traccc::float4 node1 = d_sp_reduced[nodeidx1];
     const unsigned int nodeidx2 =
-        d_output_graph[edge_size * static_cast<unsigned int>(path[0]) +
+        d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
                        gbts_consts::node2];
     traccc::float4 node2 = d_sp_reduced[nodeidx2];
 
     state1.initialize(node2, node1);
-    while (path[1] >= 0) {
-        path = d_path_store[static_cast<unsigned int>(path[1])];
+    while (path.y >= 0) {
+        path = d_path_store[static_cast<unsigned int>(path.y)];
         node2 =
             d_sp_reduced[d_output_graph[edge_size *
-                                            static_cast<unsigned int>(path[0]) +
+                                            static_cast<unsigned int>(path.x) +
                                         gbts_consts::node2]];
         if (toggle) {
             if (!gbts_detail::kf_update(&state1, &state2, node2,

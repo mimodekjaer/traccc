@@ -52,20 +52,20 @@ inline void node_sorting(
 
     const float4 sp = d_sp_params[globalIndex];
 
-    const float Phi = atan2f(sp[1], sp[0]);
-    const float r = sqrtf(sp[0] * sp[0] + sp[1] * sp[1]);
-    const float z = sp[2];
+    const float Phi = atan2f(sp.y, sp.x);
+    const float r = sqrtf(sp.x * sp.x + sp.y * sp.y);
+    const float z = sp.z;
 
     // Default to the full |tau| acceptance for nodes that carry no usable
-    // cluster width (sp[3] <= 0); the per-edge cuts then rely on these bounds.
+    // cluster width (sp.w <= 0); the per-edge cuts then rely on these bounds.
     float min_tau = 0.0f;
     float max_tau = ap.maxTau;
 
-    if (sp[3] > 0) {  // type 0 only
+    if (sp.w > 0) {  // type 0 only
         if (ap.useTauLUT) {
             // LUT is laid out as [w_bin_edge, min_tau, max_tau, ...] per bin.
             const int tau_bin =
-                5 * static_cast<int>(floorf(ap.tau_lut_inv_bin * sp[3]) - 1.0f);
+                5 * static_cast<int>(floorf(ap.tau_lut_inv_bin * sp.w) - 1.0f);
             if (tau_bin > -1 && tau_bin < static_cast<int>(ap.tauLutSize)) {
                 min_tau = d_tau_lut[static_cast<unsigned int>(tau_bin) + 1u];
                 max_tau = d_tau_lut[static_cast<unsigned int>(tau_bin) + 2u];
@@ -78,9 +78,9 @@ inline void node_sorting(
             }
         } else {
             // linear fit + correction for short clusters
-            min_tau = ap.tMin_slope * (sp[3] - ap.offset);
-            max_tau = ap.tMax_min + ap.tMax_correction / (sp[3] + ap.offset) +
-                      ap.tMax_slope * (sp[3] - ap.offset);
+            min_tau = ap.tMin_slope * (sp.w - ap.offset);
+            max_tau = ap.tMax_min + ap.tMax_correction / (sp.w + ap.offset) +
+                      ap.tMax_slope * (sp.w - ap.offset);
         }
     }
 

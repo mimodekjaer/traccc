@@ -25,11 +25,7 @@ inline void graph_compression(
     const collection_types<unsigned int>::const_view& d_neighbours_view,
     const collection_types<int>::const_view& d_reIndexer_view,
     const collection_types<unsigned int>::view& d_output_graph_view,
-    const unsigned int nEdges, const unsigned int nMaxNei) {
-
-    if (globalIndex >= nEdges) {
-        return;
-    }
+    const unsigned int nMaxNei) {
 
     const collection_types<unsigned int>::const_device d_orig_node_index(
         d_orig_node_index_view);
@@ -52,8 +48,8 @@ inline void graph_compression(
     const unsigned int pos = edge_size * static_cast<unsigned int>(newIdx);
 
     const uint2 edge_nodes = d_edge_nodes[globalIndex];
-    d_output_graph[pos + gbts_consts::node1] = d_orig_node_index[edge_nodes[0]];
-    d_output_graph[pos + gbts_consts::node2] = d_orig_node_index[edge_nodes[1]];
+    d_output_graph[pos + gbts_consts::node1] = d_orig_node_index[edge_nodes.x];
+    d_output_graph[pos + gbts_consts::node2] = d_orig_node_index[edge_nodes.y];
 
     const unsigned char nNei = d_num_neighbours[globalIndex];
     d_output_graph[pos + gbts_consts::nNei] = nNei;

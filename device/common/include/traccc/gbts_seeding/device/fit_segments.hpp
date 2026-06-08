@@ -22,7 +22,7 @@
 
 namespace traccc::device {
 
-/// Fit each candidate path and emit seed proposals that pass quality cuts.
+/// @brief Fit each candidate path and emit seed proposals that pass quality cuts.
 ///
 /// One thread per path-store entry walks backwards from a leaf, gathers the
 /// involved spacepoints, runs the helix / chi-squared fit, and on success
@@ -36,7 +36,6 @@ namespace traccc::device {
 /// @param[out] d_seed_proposals_view       (path_store index, level) per seed
 /// @param[in,out] d_edge_bids_view         Per-edge highest-bidder seed
 /// @param[out] d_seed_ambiguity_view       Per-seed ambiguity tag
-/// @param[in]  nPathStoreSize              Upper bound on path indices
 /// @param[in,out] nPropsCounter            Global atomic count of proposals
 /// @param[in]  nTerminusEdges              Number of terminus edges
 /// @param[in]  minLevel                    Minimum required path length
@@ -52,7 +51,7 @@ inline void fit_segments(
     const collection_types<int2>::view d_seed_proposals_view,
     const collection_types<unsigned long long int>::view d_edge_bids_view,
     const collection_types<char>::view d_seed_ambiguity_view,
-    const unsigned int nPathStoreSize, unsigned int& nPropsCounter,
+    unsigned int& nPropsCounter,
     const unsigned int nTerminusEdges, const unsigned char minLevel,
     const unsigned int max_num_neighbours,
     const gbts_seed_extraction_params& seed_extraction_params);

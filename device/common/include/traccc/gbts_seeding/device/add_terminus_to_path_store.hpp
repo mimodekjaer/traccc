@@ -17,7 +17,7 @@
 
 namespace traccc::device {
 
-/// Seed the path store with one entry per terminus edge.
+/// @brief Seed the path store with one entry per terminus edge.
 ///
 /// Each thread inspects one edge; if it is a terminus (no live outgoing path
 /// in d_outgoing_paths_view), it writes a (parent = -1, edge) record into
@@ -26,14 +26,12 @@ namespace traccc::device {
 /// @param[in]  globalIndex               Current thread index
 /// @param[out] d_path_store_view         Path-store entries (terminus prefix)
 /// @param[in]  d_outgoing_paths_view     Per-edge longest-path summary
-/// @param[in]  nEdges                    Number of edges in compact graph
 ///
 TRACCC_HOST_DEVICE
 inline void add_terminus_to_path_store(
     const global_index_t globalIndex,
     const collection_types<int2>::view d_path_store_view,
-    const collection_types<short2>::const_view& d_outgoing_paths_view,
-    const unsigned int nEdges);
+    const collection_types<short2>::const_view& d_outgoing_paths_view);
 
 }  // namespace traccc::device
 

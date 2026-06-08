@@ -17,7 +17,7 @@
 
 namespace traccc::device {
 
-/// Pack kept edges into the compact "output graph" layout.
+/// @brief Pack kept edges into the compact "output graph" layout.
 ///
 /// Each thread processes one original edge; if it survived re-indexing, the
 /// thread writes a record at its compact slot containing the source/destination
@@ -35,7 +35,6 @@ namespace traccc::device {
 ///                                          of edge_size = 2 + 1 + nMaxNei ints
 ///                                          ([node1, node2, nNei,
 ///                                          nei0..neiN-1]).
-/// @param[in]  nEdges                       Number of original edges
 /// @param[in]  nMaxNei                      Maximum neighbours per edge
 ///
 TRACCC_HOST_DEVICE
@@ -47,7 +46,7 @@ inline void graph_compression(
     const collection_types<unsigned int>::const_view& d_neighbours_view,
     const collection_types<int>::const_view& d_reIndexer_view,
     const collection_types<unsigned int>::view& d_output_graph_view,
-    const unsigned int nEdges, const unsigned int nMaxNei);
+    const unsigned int nMaxNei);
 
 }  // namespace traccc::device
 

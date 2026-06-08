@@ -14,7 +14,7 @@
 
 namespace traccc::device {
 
-/// Register a new seed proposal and let it bid for every edge on its path.
+/// @brief Register a new seed proposal and let it bid for every edge on its path.
 ///
 /// Records the (quality, path index) tuple at prop_idx, packs the seed
 /// bid (quality in high 32 bits, proposal id in low 32 bits), and walks the

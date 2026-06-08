@@ -20,12 +20,7 @@ inline void minmax_rad(
     const global_index_t globalIndex,
     const collection_types<unsigned int>::const_view& d_eta_bin_views_view,
     const collection_types<float4>::const_view& d_node_params_view,
-    const collection_types<float>::view& d_bin_rads_view,
-    const unsigned int maxEtaBin) {
-
-    if (globalIndex >= maxEtaBin) {
-        return;
-    }
+    const collection_types<float>::view& d_bin_rads_view) {
 
     const collection_types<unsigned int>::const_device d_eta_bin_views(
         d_eta_bin_views_view);
@@ -39,8 +34,8 @@ inline void minmax_rad(
     float min_r = 1e8f;
     float max_r = -1e8f;
 
-    for (unsigned int idx = node_start; idx < node_end; idx++) {
-        const float r = d_node_params[idx][2];
+    for (unsigned int node_idx = node_start; node_idx < node_end; node_idx++) {
+        const float r = d_node_params[node_idx].z;
         max_r = fmaxf(r, max_r);
         min_r = fminf(r, min_r);
     }

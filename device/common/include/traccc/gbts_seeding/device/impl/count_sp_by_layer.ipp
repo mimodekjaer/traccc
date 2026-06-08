@@ -41,13 +41,9 @@ inline void count_sp_by_layer(
     const collection_types<float4>::view reducedSP_view,
     const collection_types<unsigned int>::view layerCounts_view,
     const collection_types<unsigned short>::view spacepointsLayer_view,
-    const unsigned int nSp, const unsigned long int volumeMapSize,
+    const unsigned long int volumeMapSize,
     const unsigned long int surfaceMapSize,
     const gbts_sp_counting_params sp_counting_params) {
-
-    if (globalIndex >= nSp) {
-        return;
-    }
 
     const traccc::edm::spacepoint_collection::const_device spacepoints(
         spacepoints_view);
@@ -73,7 +69,7 @@ inline void count_sp_by_layer(
         (volume < volumeMapSize) ? volumeToLayerMap[volume] : SHRT_MAX;
 
     if (begin_or_bin == SHRT_MAX) {
-        reducedSP[globalIndex][3] = -CHAR_MAX - 1;
+        reducedSP[globalIndex].w = -CHAR_MAX - 1;
         return;
     }
     unsigned int layerIdx = 0u;
@@ -97,7 +93,7 @@ inline void count_sp_by_layer(
     float cluster_diameter = measurement.diameter();
     const int type = static_cast<int>(layerType[layerIdx]);
     if (type == 1 && cluster_diameter > sp_counting_params.type1_max_width) {
-        reducedSP[globalIndex][3] = -CHAR_MAX - 1;
+        reducedSP[globalIndex].w = -CHAR_MAX - 1;
         return;
     }
     cluster_diameter = (sp_counting_params.doTauCut && type != 0)

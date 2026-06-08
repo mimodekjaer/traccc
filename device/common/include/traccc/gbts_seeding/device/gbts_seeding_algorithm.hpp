@@ -32,7 +32,7 @@
 
 namespace traccc::device {
 
-/// Main algorithm for performing GBTS seeding on a device (backend-agnostic).
+/// @brief Main algorithm for performing GBTS seeding on a device (backend-agnostic).
 ///
 /// The algorithm orchestrates the sequence of kernel launches and host-side
 /// synchronisations.  Backend-specific subclasses are responsible for

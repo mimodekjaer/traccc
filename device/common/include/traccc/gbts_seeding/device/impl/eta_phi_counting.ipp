@@ -20,11 +20,7 @@ inline void eta_phi_counting(
     const collection_types<unsigned int>::const_view& d_histo_view,
     const collection_types<unsigned int>::view& d_eta_node_counter_view,
     const collection_types<unsigned int>::view& d_phi_cusums_view,
-    const unsigned int maxEtaBin, const unsigned int nPhiBins) {
-
-    if (globalIndex >= maxEtaBin) {
-        return;
-    }
+    const unsigned int nPhiBins) {
 
     const collection_types<unsigned int>::const_device d_histo(d_histo_view);
     collection_types<unsigned int>::device d_eta_node_counter(

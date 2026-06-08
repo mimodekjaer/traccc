@@ -17,7 +17,7 @@
 
 namespace traccc::device {
 
-/// Count terminus edges (those with no live outgoing path) and total paths.
+/// @brief Count terminus edges (those with no live outgoing path) and total paths.
 ///
 /// Each block scans a chunk of edges, accumulates a per-block tally of
 /// terminus edges into shared outgoingCount, then atomically folds the

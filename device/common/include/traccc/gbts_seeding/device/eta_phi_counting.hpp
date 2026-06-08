@@ -17,7 +17,7 @@
 
 namespace traccc::device {
 
-/// Sum the (eta, phi) histogram across phi for each eta bin.
+/// @brief Sum the (eta, phi) histogram across phi for each eta bin.
 ///
 /// One thread per eta-bin walks its phi row, writes the running per-phi sum
 /// into d_phi_cusums_view (later turned cumulative), and stores the total
@@ -27,7 +27,6 @@ namespace traccc::device {
 /// @param[in]  d_histo_view               Flat (eta, phi) node histogram
 /// @param[out] d_eta_node_counter_view    Per-eta total node count
 /// @param[out] d_phi_cusums_view          Per-(eta, phi) prefix-sum scratch
-/// @param[in]  maxEtaBin                  Number of eta bins
 /// @param[in]  nPhiBins                   Number of phi bins per eta slice
 ///
 TRACCC_HOST_DEVICE
@@ -36,7 +35,7 @@ inline void eta_phi_counting(
     const collection_types<int>::const_view& d_histo_view,
     const collection_types<int>::view d_eta_node_counter_view,
     const collection_types<int>::view d_phi_cusums_view,
-    const unsigned int maxEtaBin, const unsigned int nPhiBins);
+    const unsigned int nPhiBins);
 
 }  // namespace traccc::device
 

@@ -18,7 +18,7 @@
 
 namespace traccc::device {
 
-/// Scatter nodes into (eta, phi)-sorted slots and pack their geometry tuple.
+/// @brief Scatter nodes into (eta, phi)-sorted slots and pack their geometry tuple.
 ///
 /// Each thread picks one node, atomically increments its (eta, phi) write
 /// cursor in d_phi_cusums_view, packs the geometry / kinematic tuple into

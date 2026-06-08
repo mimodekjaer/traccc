@@ -20,7 +20,7 @@
 
 namespace traccc::device {
 
-/// Per-spacepoint binning kernel: atomically claim a layer-ordered slot,
+/// @brief Per-spacepoint binning kernel: atomically claim a layer-ordered slot,
 /// compute the node's eta- and phi-bin indices, and bump the (eta, phi)
 /// histogram bucket -- all from a single read of the source spacepoint.
 TRACCC_HOST_DEVICE

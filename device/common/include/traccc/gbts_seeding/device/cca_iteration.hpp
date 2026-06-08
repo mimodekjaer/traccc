@@ -21,7 +21,7 @@
 
 namespace traccc::device {
 
-/// One iteration of the cellular-automaton "longest path" relaxation.
+/// @brief One iteration of the cellular-automaton "longest path" relaxation.
 ///
 /// Threads cooperatively process the current active-edge list, propagate
 /// levels along the compact graph, and write the next iteration's active set

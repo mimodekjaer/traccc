@@ -15,7 +15,7 @@
 
 namespace traccc::cuda {
 
-/// Main algorithm for performing GBTS seeding on an NVIDIA GPU.
+/// @brief Main algorithm for performing GBTS seeding on an NVIDIA GPU.
 ///
 /// This algorithm returns a buffer which is not necessarily filled yet. A
 /// synchronisation statement is required before destroying this buffer.

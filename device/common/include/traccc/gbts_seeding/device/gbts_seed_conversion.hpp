@@ -18,7 +18,7 @@
 
 namespace traccc::device {
 
-/// Convert accepted seed proposals into 3-spacepoint edm::seeds.
+/// @brief Convert accepted seed proposals into 3-spacepoint edm::seeds.
 ///
 /// Each thread (strided by gridSize) processes one accepted proposal,
 /// reads the three constituent spacepoints from d_sp_params_view, applies

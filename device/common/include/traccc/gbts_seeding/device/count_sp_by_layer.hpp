@@ -19,7 +19,7 @@
 
 namespace traccc::device {
 
-/// Count and tag spacepoints by GBTS layer, producing the reduced SP view.
+/// @brief Count and tag spacepoints by GBTS layer, producing the reduced SP view.
 ///
 /// Each thread inspects one spacepoint, looks up its GBTS layer via the
 /// volume / surface map, optionally applies a cluster-width cut, and on
@@ -38,7 +38,6 @@ namespace traccc::device {
 /// @param[out] layerCounts_view     Per-layer atomic spacepoint counter
 /// @param[out] spacepointsLayer_view GBTS layer assigned to each kept SP
 /// @param[in]  sp_counting_params   Parameters for spacepoint counting
-/// @param[in]  nSp                  Number of spacepoints in the event
 ///
 TRACCC_HOST_DEVICE
 inline void count_sp_by_layer(
@@ -52,7 +51,7 @@ inline void count_sp_by_layer(
     const collection_types<float4>::view reducedSP_view,
     const collection_types<unsigned int>::view layerCounts_view,
     const collection_types<unsigned short>::view spacepointsLayer_view,
-    const unsigned int nSp, const gbts_sp_counting_params sp_counting_params);
+    const gbts_sp_counting_params sp_counting_params);
 
 }  // namespace traccc::device
 

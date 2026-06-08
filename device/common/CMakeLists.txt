@@ -110,6 +110,9 @@ traccc_add_library( traccc_device_common device_common
    "include/traccc/gbts_seeding/device/impl/gbts_seed_conversion.ipp"
    "include/traccc/gbts_seeding/device/gbts_seeding_algorithm.hpp"
    "src/gbts_seeding/gbts_seeding_algorithm.cpp"
+   "src/gbts_seeding/node_making.cpp"
+   "src/gbts_seeding/graph_making.cpp"
+   "src/gbts_seeding/seed_extraction.cpp"
    # Track parameters estimation function(s).
    "include/traccc/seeding/device/estimate_track_params.hpp"
    "include/traccc/seeding/device/impl/estimate_track_params.ipp"

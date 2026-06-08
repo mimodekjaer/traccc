@@ -17,7 +17,7 @@
 
 namespace traccc::device {
 
-/// Compute each edge's slot in its destination node's incoming-edge list.
+/// @brief Compute each edge's slot in its destination node's incoming-edge list.
 ///
 /// One thread per edge atomically increments the per-destination-node count
 /// in d_num_outgoing_edges_view and records the returned slot in

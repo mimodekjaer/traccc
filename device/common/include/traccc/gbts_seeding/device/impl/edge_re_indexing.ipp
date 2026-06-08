@@ -23,12 +23,7 @@ namespace traccc::device {
 TRACCC_HOST_DEVICE
 inline void edge_re_indexing(const global_index_t globalIndex,
                              const collection_types<int>::view d_reIndexer_view,
-                             unsigned int& nConnectedEdges,
-                             const unsigned int nEdges) {
-
-    if (globalIndex >= nEdges) {
-        return;
-    }
+                             unsigned int& nConnectedEdges) {
 
     collection_types<int>::device d_reIndexer(d_reIndexer_view);
 

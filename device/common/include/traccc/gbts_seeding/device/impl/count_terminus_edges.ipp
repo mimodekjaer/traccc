@@ -29,12 +29,12 @@ TRACCC_HOST_DEVICE inline void count_terminus_edges(
 
     // One edge per call; the grid-stride loop lives in the kernel wrapper.
     const short2 out_paths = d_outgoing_paths[globalIndex];
-    if (out_paths[1] != -1) {
-        d_outgoing_paths[globalIndex][1] = static_cast<short>(
+    if (out_paths.y != -1) {
+        d_outgoing_paths[globalIndex].y = static_cast<short>(
             vecmem::device_atomic_ref<unsigned int>(nPathStoreSizeCounter)
                 .fetch_add(1u));
         vecmem::device_atomic_ref<unsigned int>(nPathsCounter)
-            .fetch_add(static_cast<unsigned int>(out_paths[0]));
+            .fetch_add(static_cast<unsigned int>(out_paths.x));
     }
 }
 

@@ -16,7 +16,7 @@
 
 namespace traccc::device {
 
-/// Replace the per-edge "kept" flag with its compacted index.
+/// @brief Replace the per-edge "kept" flag with its compacted index.
 ///
 /// Each thread reads its slot in d_reIndexer_view; if the edge is marked
 /// "kept", it atomically claims the next slot in nConnectedEdges and
@@ -25,13 +25,11 @@ namespace traccc::device {
 /// @param[in]  globalIndex            Current thread index
 /// @param[in,out] d_reIndexer_view    Per-edge "kept" in, compact index out
 /// @param[in,out] nConnectedEdges     Atomic counter of surviving edges
-/// @param[in]  nEdges                 Number of original edges
 ///
 TRACCC_HOST_DEVICE
 inline void edge_re_indexing(const global_index_t globalIndex,
                              const collection_types<int>::view d_reIndexer_view,
-                             unsigned int& nConnectedEdges,
-                             const unsigned int nEdges);
+                             unsigned int& nConnectedEdges);
 
 }  // namespace traccc::device
 
