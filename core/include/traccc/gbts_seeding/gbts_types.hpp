@@ -17,10 +17,10 @@
 // ---------------------------------------------------------------------------
 // Edge precision toggle
 // ---------------------------------------------------------------------------
-// 1 = use a half (fp16) edge type where a device compiler provides one (CUDA and
-//     SYCL, and thus alpaka's CUDA/SYCL accelerators); 0 = use float everywhere.
+// 1 = use a fp16 edge type where a device compiler provides one (CUDA and SYCL); 
+// 0 = use float everywhere.
 // Flip this 1 -> 0 to fall back to float and test whether fp16 is needed. A host
-// / CPU build has no half type and always uses float regardless.
+// / CPU build is built with float
 #define TRACCC_GBTS_EDGE_HALF 1
 
 #if TRACCC_GBTS_EDGE_HALF && defined(__CUDACC__)
@@ -33,7 +33,7 @@
 namespace traccc {
 
 // ---------------------------------------------------------------------------
-// Minimal fixed-size vector types (packed and aligned for coalesced GPU loads).
+// Minimal fixed-size vector storage types, and constructors for them.
 // ---------------------------------------------------------------------------
 struct TRACCC_ALIGN(8) float2 {
     float x, y;
@@ -134,13 +134,16 @@ namespace device {
 inline constexpr float PI_F = traccc::constant<float>::pi;
 inline constexpr float TWO_PI_F = 2.0f * traccc::constant<float>::pi;
 
-/// Wrap an angle into (-pi, pi], matching the reference (round-to-nearest).
+// Wrap an angle into (-pi, pi], matching the reference (round-to-nearest).
+// This can be generalised using if and floor which is in 
+// trigonometric helper functions.
+// TODO: Test whether this is faster than the trigometric helper function.
 TRACCC_HOST_DEVICE inline float phi_wrap(const float phi) {
     return phi - TWO_PI_F * rintf(phi * (1.0f / TWO_PI_F));
 }
 
 #if TRACCC_GBTS_EDGE_HALF && defined(__CUDACC__)
-/// Half-precision phi wrap (device only); kept so half edge math still works.
+// Half-precision phi wrap (device only); kept so half edge math still works.
 __device__ inline gbts_edge_t phi_wrap(const gbts_edge_t phi) {
     const __half two_pi_h = __float2half(TWO_PI_F);
     const __half one_h = __float2half(1.0f);
@@ -148,7 +151,7 @@ __device__ inline gbts_edge_t phi_wrap(const gbts_edge_t phi) {
 }
 #elif TRACCC_GBTS_EDGE_HALF && \
     (defined(SYCL_LANGUAGE_VERSION) || defined(__SYCL_DEVICE_ONLY__))
-/// Half-precision phi wrap; kept so half edge math still works.
+// Half-precision phi wrap; kept so half edge math still works.
 inline ::sycl::half phi_wrap(const ::sycl::half phi) {
     const ::sycl::half two_pi_h = static_cast<::sycl::half>(TWO_PI_F);
     return phi - two_pi_h * ::sycl::rint(phi / two_pi_h);

@@ -94,8 +94,8 @@ TRACCC_HOST_DEVICE inline void gbts_checks(
         d_edge_nodes[nEdges] = make_uint2(globalIdx2, begin_bin1 + n1Idx);
         d_edge_params[nEdges] =
             gbts_make_edge4(exp_eta, curv, phi2 + curv * r2, phi1 + curv * r1);
-        // edge params: (exp(-eta), curvature, extrapolated phi at node2 (r2),
-        //               extrapolated phi at node1 (r1))
+        // edge params: (exp(-eta), curvature, extrapolated phi at node1,
+        //               extrapolated phi at node2)
     }
 }
 

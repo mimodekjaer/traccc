@@ -44,7 +44,7 @@ struct gbts_layerInfo {
 
 // Named indices into the flat device counter buffer, mirroring the layout in
 // traccc/gbts_changes. One memset zeros all of them.
-enum gbts_counter : unsigned int {
+enum class gbts_counter : unsigned int {
     nEdges,           // edges created by graph_edge_making
     nConnections,     // edge-to-edge connections from graph_edge_matching
     nConnectedEdges,  // edges kept after edge_re_indexing
@@ -58,11 +58,12 @@ enum gbts_counter : unsigned int {
 
 struct gbts_consts {
 
-    // CCA max iterations -> maximum seed length (in edges). Tuning / hard cap.
+    // CCA max iterations -> maximum seed length (in edges).
     static constexpr unsigned short max_cca_iter = 15;
-    // shared memory allocation sizes (element counts per block). Algorithmic.
-    static constexpr unsigned short node_buffer_length = 128;
+    // shared memory allocation sizes (element counts per block).
+    // Which is used in the fill_path_store, and store 2 unsigned int.
     static constexpr unsigned short live_path_buffer = 1024;
+    static constexpr unsigned short node_buffer_length = 128;
 
     // Per-edge offsets into the row-major output graph
     // (each edge occupies edge_size = 2 + 1 + max_num_neighbours ints).
@@ -77,32 +78,24 @@ struct gbts_consts {
 namespace traccc {
 
 // Tau-prediction cuts read by device::node_sorting.
-//
-// tau = cot(theta) = sinh(eta) is predicted from the cluster width w (= the SP's
-// stored width). node_sorting bounds tau by two empirical lines in w:
-//   min_tau = tMin_slope * (w - offset)
-//   max_tau = tMax_min + tMax_correction / (w + offset) + tMax_slope * (w - offset)
-// The slopes/offsets have no closed form from pT: they are a calibration of the
-// "cluster width grows with track incidence angle" relation, i.e. of w vs tau,
-// fixed by the sensor geometry (thickness / pitch).
 struct gbts_node_sorting_params {
     // Slope of the lower-bound tau line: min_tau = tMin_slope * (w - offset).
     float tMin_slope = 6.7f;
-    // Minimum cluster width: offset = w_min (a ~1-cluster-cell width), subtracted
-    // in both tau lines so a minimal cluster predicts tau ~ 0.
+    // Minimum cluster width: offset = w_min.
     float offset = 0.2f;
     // Asymptotic lower bound on the upper-tau line (w -> large).
     float tMax_min = 1.6f;
     // Inverse-width correction term on the upper-tau line: tMax_correction/(w+offset).
     float tMax_correction = 0.15f;
-    // Slope of the upper-tau line: ... + tMax_slope * (w - offset).
+    // Slope of the upper-tau line:
+    //   max_tau = tMax_min + tMax_correction / (w + offset) + tMax_slope * (w - offset).
     float tMax_slope = 6.1f;
     // |tau| acceptance for nodes without a usable cluster width.
-    //   sinh(|eta_max|) = maxTau   ->   |eta_max| = asinh(36) = 4.28
-    // i.e. the ~4.3 eta detector acceptance.
+    //   sinh(|eta_max|) = maxTau   ->   sinh(4.3) ~ 36 
     float maxTau = 36.0f;
-    // Opt-in: use a tau lookup table instead of the analytic formula above.
-    // The LUT is laid out as [w_bin_edge, min_tau, max_tau, ...] per bin.
+    // Opt-in: use a tau lookup table instead of the GPU-friendly linear formula.
+    // The LUT is laid out as [w_bin_edge, min_tau_0, max_tau_0, min_tau_1, max_tau_1].
+    // TODO: Test this with the LUT on CPU
     bool useTauLUT = false;
     // Inverse cluster-width bin size used to index the LUT.
     float tau_lut_inv_bin = 0.0f;
@@ -118,25 +111,25 @@ struct gbts_node_sorting_params {
 // rigidity kappa = 1/R with R[m] = pT/(0.3*B), where 0.3 = 0.299792458 =
 // c*1e-9 [GeV/(T*m*e)] from p[GeV] = q*B*R*c.
 struct gbts_edge_making_params {
-    // Two nodes must be radially separated to form an edge: dr >= minDeltaRadius
-    // (mm). Geometry input: just above the module/double-layer thickness so two
-    // hits are never treated as coplanar.
+    // Two nodes must be radially separated to form an edge: 
+    // dr >= minDeltaRadius (mm)
     float minDeltaRadius = 2.0f;
-    // z at the beamline: z0 = z1 - r1*tau, required min_z0 <= z0 <= max_z0.
-    // +/-160 mm = chosen luminous-region (beamspot) half-length.
+    // z estimate at the beamline: z0 = z1 - r1*tau. 
+    // required min_z0 <= z0 <= max_z0.
+    // +/-160 mm = chosen luminous-region.
     float min_z0 = -160.0f;
     float max_z0 = 160.0f;
     // Outer radius (mm) to which the edge is extrapolated for the ROI z cut.
     // Geometry input (~ outer pixel radius).
     float maxOuterRadius = 350.0f;
     // ROI band for zouter = z0 + maxOuterRadius*tau, required in [cut_zMinU,
-    // cut_zMaxU]:  cut_zMin/MaxU = -/+ (|z0|_max + maxOuterRadius * tau_roi),
-    // tau_roi = 45 (chosen, slightly above maxTau = 36 for margin).
-    float cut_zMinU = min_z0 - maxOuterRadius * 45.0f;
-    float cut_zMaxU = max_z0 + maxOuterRadius * 45.0f;
+    // cut_zMaxU]:  cut_zMin/MaxU = -/+ (|z0|_max + maxOuterRadius * tau_roi).
+    float tau_roi = 45.0f;
+    float cut_zMinU = min_z0 - maxOuterRadius * tau_roi;
+    float cut_zMaxU = max_z0 + maxOuterRadius * tau_roi;
     // Maximum edge curvature = minimum pT:
-    //   max_Kappa = curv_max = kappa/2 = 0.3*B/(2*pT)
-    //   = 0.299792458*2/(2*0.9) m^-1 = 0.333 m^-1 = 3.33e-4 mm^-1  (2 T, 0.9 GeV).
+    //   max_Kappa = curv_max = kappa/2 = c*B/(2*pT)
+    //   = 0.299792458*2/(2*0.9) m^-1 = 0.333 m^-1 = 3.33e-4 mm^-1 (2 T, 0.9 GeV).
     // (0.3 = c*1e-9 rigidity, /2 = chord geometry.)
     float max_Kappa = 3.75e-4f;
     // Max transverse impact parameter, per curvature regime:
