@@ -495,8 +495,7 @@ auto gbts_seeding_algorithm::extract_seeds(
 
     gbts_fill_path_store_kernel({nTerminusEdges, cfg.max_num_neighbours, nPaths,
                                  path_store_buf, output_graph, levels_buf,
-                                 d_counters + gbts_counter::nTerminusEdges,
-                                 d_counters + gbts_counter::nDroppedPaths});
+                                 d_counters + gbts_counter::nTerminusEdges});
 
     gbts_fit_segments_kernel(
         {nPaths, nTerminusEdges, cfg.max_num_neighbours, cfg.minLevel,
@@ -507,23 +506,6 @@ auto gbts_seeding_algorithm::extract_seeds(
          cfg.gbts_make_graph_edges_params.max_z0});
 
     copy()(counters_buf, h_counters)->wait();
-
-    // gbts_fill_path_store must have claimed exactly one path-store slot per
-    // reachable path. A shortfall means a block's live-path frontier
-    // overflowed (gbts_consts::live_path_buffer) and paths were dropped in
-    // atomic race order -- the seed output is then no longer reproducible.
-    if (h_counters[gbts_counter::nTerminusEdges] != nPaths + nTerminusEdges) {
-        TRACCC_WARNING("path store truncated ("
-                       << h_counters[gbts_counter::nTerminusEdges] << " of "
-                       << nPaths + nTerminusEdges
-                       << " entries): paths were dropped non-deterministically");
-    }
-    if (h_counters[gbts_counter::nDroppedPaths] != 0) {
-        TRACCC_WARNING(h_counters[gbts_counter::nDroppedPaths]
-                       << " paths dropped by gbts_fill_path_store (live-path "
-                          "frontier overflow): the result is not reproducible; "
-                          "increase gbts_consts::live_path_buffer");
-    }
 
     const unsigned int nProps = h_counters[gbts_counter::nProps];
     TRACCC_DEBUG("nProps " << nProps);
