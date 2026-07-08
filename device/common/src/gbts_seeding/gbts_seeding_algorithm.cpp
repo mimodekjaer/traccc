@@ -458,14 +458,21 @@ auto gbts_seeding_algorithm::extract_seeds(
     copy().setup(seed_proposals_buf)->ignore();
     vecmem::data::vector_buffer<char> seed_ambiguity_buf(nPaths, mr().main);
     copy().setup(seed_ambiguity_buf)->ignore();
+    // Per-proposal deterministic key; the fit launcher sorts proposals by it to
+    // assign a canonical (reproducible) proposal index for the bidding. The
+    // 0xFF.. sentinel marks unused slots so they sort to the back. No host-side
+    // init: gbts_add_terminus_to_path_store writes the sentinels (and zeroes
+    // edge_bids) before gbts_fit_segments reads either buffer.
+    vecmem::data::vector_buffer<std::uint64_t> prop_hash_buf(nPaths, mr().main);
+    copy().setup(prop_hash_buf)->ignore();
 
     vecmem::data::vector_buffer<unsigned long long int> edge_bids_buf(
         nConnectedEdges, mr().main);
     copy().setup(edge_bids_buf)->ignore();
-    copy().memset(edge_bids_buf, 0)->ignore();
 
     gbts_add_terminus_to_path_store_kernel(
-        {nConnectedEdges, path_store_buf, outgoing_paths_buf});
+        {nConnectedEdges, nPaths, path_store_buf, outgoing_paths_buf,
+         prop_hash_buf, edge_bids_buf});
 
     gbts_fill_path_store_kernel({nTerminusEdges, cfg.max_num_neighbours, nPaths,
                                  path_store_buf, output_graph, levels_buf,
