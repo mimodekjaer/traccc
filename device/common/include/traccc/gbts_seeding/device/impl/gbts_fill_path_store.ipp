@@ -55,6 +55,9 @@ TRACCC_HOST_DEVICE inline void gbts_fill_path_store(
     // Upper bound on path-store slots that may be claimed.
     const unsigned int nReachablePaths =
         payload.nPaths + payload.nTerminusEdges;
+    // Frontier tombstone (skipped when popped): marks a slot whose child was
+    // dropped after the frontier cursor had already been advanced.
+    constexpr unsigned int invalid_path_edge = 0xFFFFFFFFu;
 
     if (threadIndex == 0) {
         shared.n_live_paths = 0;
@@ -86,6 +89,11 @@ TRACCC_HOST_DEVICE inline void gbts_fill_path_store(
             if (live_idx >=
                 static_cast<unsigned int>(
                     traccc::device::gbts_consts::live_path_buffer)) {
+                // frontier full: this child (and its subtree) is lost in
+                // atomic race order -- count it so the host can warn
+                vecmem::device_atomic_ref<unsigned int>(
+                    *payload.nDroppedPathsCounter)
+                    .fetch_add(1u);
                 break;
             }
             const unsigned int new_path_idx =
@@ -125,7 +133,7 @@ TRACCC_HOST_DEVICE inline void gbts_fill_path_store(
                     : shared.n_live_paths - static_cast<int>(blockSize);
         }
         barrier.blockBarrier();
-        if (has_path) {
+        if (has_path && path.x != invalid_path_edge) {
             const unsigned int edge_pos = edge_size * path.x;
             const unsigned int nNei =
                 d_output_graph[edge_pos + gbts_consts::nNei];
@@ -136,12 +144,10 @@ TRACCC_HOST_DEVICE inline void gbts_fill_path_store(
                 if (level != d_levels[edge_idx] + 1) {
                     continue;
                 }
-                path_idx = vecmem::device_atomic_ref<unsigned int>(
-                               nPathStoreSizeCounter)
-                               .fetch_add(1u);
-                if (path_idx >= nReachablePaths) {
-                    break;
-                }
+                // Claim the frontier slot FIRST: a child only enters the
+                // global path store if it also fits the frontier, so the
+                // store can never hold a claimed-but-unwritten (garbage)
+                // entry that gbts_fit_segments would read.
                 const int live_idx =
                     vecmem::device_atomic_ref<
                         int, vecmem::device_address_space::local>(
@@ -150,6 +156,24 @@ TRACCC_HOST_DEVICE inline void gbts_fill_path_store(
                 if (live_idx >=
                     static_cast<int>(
                         traccc::device::gbts_consts::live_path_buffer)) {
+                    // frontier full: child dropped in race order -- count it
+                    vecmem::device_atomic_ref<unsigned int>(
+                        *payload.nDroppedPathsCounter)
+                        .fetch_add(1u);
+                    break;
+                }
+                path_idx = vecmem::device_atomic_ref<unsigned int>(
+                               nPathStoreSizeCounter)
+                               .fetch_add(1u);
+                if (path_idx >= nReachablePaths) {
+                    // cannot happen when the CCA path counts are consistent;
+                    // tombstone the already-claimed frontier slot and record
+                    // the drop
+                    shared_live_paths[static_cast<unsigned int>(live_idx)] =
+                        uint2{invalid_path_edge, 0u};
+                    vecmem::device_atomic_ref<unsigned int>(
+                        *payload.nDroppedPathsCounter)
+                        .fetch_add(1u);
                     break;
                 }
                 d_path_store[path_idx] =

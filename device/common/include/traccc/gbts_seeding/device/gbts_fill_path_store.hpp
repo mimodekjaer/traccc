@@ -35,6 +35,10 @@ struct gbts_fill_path_store_payload {
     vecmem::data::vector_view<const unsigned char> levels;
     /// In/out: global atomic write cursor into path_store
     unsigned int* nPathStoreSizeCounter;
+    /// In/out: global atomic count of children dropped on frontier overflow.
+    /// Nonzero means the path store is incomplete and the dropped set is
+    /// race-ordered (non-reproducible) -- the orchestrator warns on it.
+    unsigned int* nDroppedPathsCounter;
 };
 
 /// (Shared Event Data) Payload for the @c traccc::device::gbts_fill_path_store

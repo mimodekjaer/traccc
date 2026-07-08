@@ -47,7 +47,8 @@ struct gbts_layerInfo {
 enum gbts_counter : unsigned int {
     nEdges,           // edges created by gbts_make_graph_edges
     nConnectedEdges,  // edges kept after gbts_reindex_edges
-    nEdgesLeft,       // edges remaining for CCA (kept for reference parity)
+    nDroppedPaths,    // children dropped by gbts_fill_path_store on frontier
+                      // overflow (diagnostic; nonzero => not reproducible)
     nPaths,           // total paths reachable from any terminus edge
     nTerminusEdges,   // #terminus edges; then reused as path-store write cursor
     nProps,           // seed proposals from gbts_fit_segments
