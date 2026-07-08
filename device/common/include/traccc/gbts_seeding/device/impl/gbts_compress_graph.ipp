@@ -27,8 +27,7 @@ TRACCC_HOST_DEVICE inline void gbts_compress_graph(
         payload.num_neighbours);
     const vecmem::device_vector<const unsigned int> d_neighbours(
         payload.neighbours);
-    const vecmem::device_vector<const unsigned int> d_inclusive_kept(
-        payload.inclusive_kept);
+    const vecmem::device_vector<const int> d_reIndexer(payload.reIndexer);
     vecmem::device_vector<unsigned int> d_output_graph(payload.output_graph);
 
     const unsigned int globalIdx = thread_id.getGlobalThreadIdX();
@@ -38,26 +37,20 @@ TRACCC_HOST_DEVICE inline void gbts_compress_graph(
     for (unsigned int globalIndex = globalIdx; globalIndex < payload.nEdges;
          globalIndex += blockDimX * gridDimX) {
 
-        const unsigned int incl = d_inclusive_kept[globalIndex];
-        // Kept(e) <=> the inclusive kept-count increases at e (the previous
-        // entry is adjacent, so this costs no extra memory traffic).
-        if (incl ==
-            ((globalIndex == 0u) ? 0u : d_inclusive_kept[globalIndex - 1u])) {
+        const int newIdx = d_reIndexer[globalIndex];
+        if (newIdx == -1) {
             continue;
         }
 
         // Row-major output graph: each edge owns a contiguous block of
         // edge_size = 2 + 1 + nMaxNei ints ([node1, node2, nNei,
-        // nei0..neiN-1]). The compact index comes straight from the
-        // inclusive kept-count, so reindexing needs no write-back pass.
+        // nei0..neiN-1]).
         const unsigned int edge_size = 2u + 1u + payload.nMaxNei;
-        const unsigned int pos = edge_size * (incl - 1u);
+        const unsigned int pos = edge_size * static_cast<unsigned int>(newIdx);
 
-        // The graph carries the sorted-node slots themselves: they are the
-        // deterministic node identity (geometric sort order), and the
-        // downstream stages gather positions from the slot-indexed node_xyzw
-        // array. The map back to the original spacepoint collection indices
-        // happens once, in gbts_convert_seeds.
+        // The graph carries the sorted-node slots themselves; the map back to
+        // the original spacepoint collection indices happens once, in
+        // gbts_convert_seeds.
         const uint2 edge_nodes = d_edge_nodes[globalIndex];
         d_output_graph[pos + gbts_consts::node1] = edge_nodes.x;
         d_output_graph[pos + gbts_consts::node2] = edge_nodes.y;
@@ -66,10 +59,9 @@ TRACCC_HOST_DEVICE inline void gbts_compress_graph(
         d_output_graph[pos + gbts_consts::nNei] = nNei;
         const unsigned int nei_pos = payload.nMaxNei * globalIndex;
         for (unsigned int k = 0u; k < nNei; k++) {
-            // Every stored neighbour is kept (gbts_match_graph_edges marks
-            // its survivors), so the remap needs no flag check.
             d_output_graph[pos + gbts_consts::nei_start + k] =
-                d_inclusive_kept[d_neighbours[nei_pos + k]] - 1u;
+                static_cast<unsigned int>(
+                    d_reIndexer[d_neighbours[nei_pos + k]]);
         }
     }
 }

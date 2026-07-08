@@ -46,6 +46,7 @@ struct gbts_layerInfo {
 // traccc/gbts_changes. One memset zeros all of them.
 enum gbts_counter : unsigned int {
     nEdges,           // edges created by gbts_make_graph_edges
+    nConnections,     // edge-to-edge connections from gbts_match_graph_edges
     nConnectedEdges,  // edges kept after gbts_reindex_edges
     nDroppedPaths,    // children dropped by gbts_fill_path_store on frontier
                       // overflow (diagnostic; nonzero => not reproducible)

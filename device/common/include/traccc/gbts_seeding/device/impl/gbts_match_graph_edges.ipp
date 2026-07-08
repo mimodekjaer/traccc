@@ -21,11 +21,6 @@
 
 namespace traccc::device {
 
-// Compile-time upper bound on nMaxNei (= cfg.max_num_neighbours, default 10),
-// used to size the thread-local top-K neighbour-selection buffers below. Must
-// be >= any configured max_num_neighbours.
-constexpr unsigned int gbts_match_max_nei = 16u;
-
 // For each edge, find up to nMaxNei compatible neighbour edges sharing its
 // outer node, recording them and marking both edges as "kept". The edge
 // parameters are read from the packed float4 buffer ([exp_eta, curv, phi_z,
@@ -45,8 +40,7 @@ TRACCC_HOST_DEVICE inline void gbts_match_graph_edges(
     vecmem::device_vector<unsigned char> d_num_neighbours(
         payload.num_neighbours);
     vecmem::device_vector<unsigned int> d_neighbours(payload.neighbours);
-    vecmem::device_vector<unsigned int> d_inclusive_kept(
-        payload.inclusive_kept);
+    vecmem::device_vector<int> d_reIndexer(payload.reIndexer);
 
     const float cut_dphi_max =
         payload.gbts_match_graph_edges_params.cut_dphi_max;
@@ -69,9 +63,6 @@ TRACCC_HOST_DEVICE inline void gbts_match_graph_edges(
         const unsigned int nLinks =
             d_num_outgoing_edges[sharedNode + 1u] - link_begin;
         if (nLinks == 0u) {
-            // num_neighbours has no host-side zero-init; every edge's slot is
-            // defined here or via num_nei below.
-            d_num_neighbours[globalIndex] = 0;
             continue;
         }
 
@@ -83,98 +74,45 @@ TRACCC_HOST_DEVICE inline void gbts_match_graph_edges(
 
         const unsigned int nei_pos = payload.nMaxNei * globalIndex;
 
-        // Deterministic neighbour selection: keep the K candidates with the
-        // smallest neighbour outer-node index (edge_nodes[edge2_idx].x) -- a
-        // unique, run-to-run-stable key per candidate. This replaces the old
-        // "first nMaxNei in (race-ordered) edge_links order" early break, so the
-        // kept neighbour SET (and hence the kept-edge set and the seeds) is
-        // reproducible. Downstream consumers use only the set, not its order.
-        const unsigned int K = (payload.nMaxNei < gbts_match_max_nei)
-                                   ? payload.nMaxNei
-                                   : gbts_match_max_nei;
-        unsigned int best_val[gbts_match_max_nei];  // kept edge2_idx
-        unsigned int best_key[gbts_match_max_nei];  // its outer-node key
         unsigned char num_nei = 0;
-        unsigned int max_key = 0u;  // largest kept key (valid once num_nei == K)
-        unsigned int max_pos = 0u;  // slot holding max_key
 
-        for (unsigned int k = 0u; k < nLinks; k++) {
+        for (unsigned int k = 0u; k < nLinks;
+             k++) {  // loop over potential neighbours
 
+            if (num_nei >= payload.nMaxNei) {
+                break;
+            }
             const unsigned int edge2_idx = d_edge_links[link_begin + k];
 
-            if (num_nei == K) {
-                // Set full: a candidate can only enter if its key beats the
-                // current largest -- check the cheap key first and skip the
-                // param load + cuts otherwise.
-                const unsigned int key = d_edge_nodes[edge2_idx].x;
-                if (key >= max_key) {
-                    continue;
-                }
-                const float4 params2 = d_edge_params[edge2_idx];
-                const float tau_ratio = params2.x * uat_2 - 1.0f;
-                if (math::fabs(tau_ratio) > cut_tau_ratio_max) {
-                    continue;
-                }
-                const float dPhi = traccc::detail::wrap_phi(Phi2 - params2.w);
-                if (math::fabs(dPhi) > cut_dphi_max) {
-                    continue;
-                }
-                const float dcurv = curv2 - params2.y;
-                if (math::fabs(dcurv) > cut_dcurv_max) {
-                    continue;
-                }
-                // Evict the current largest, then recompute it over the set.
-                best_val[max_pos] = edge2_idx;
-                best_key[max_pos] = key;
-                max_key = best_key[0];
-                max_pos = 0u;
-                for (unsigned int j = 1u; j < K; j++) {
-                    if (best_key[j] > max_key) {
-                        max_key = best_key[j];
-                        max_pos = j;
-                    }
-                }
-            } else {
-                const float4 params2 = d_edge_params[edge2_idx];
-                const float tau_ratio = params2.x * uat_2 - 1.0f;
-                if (math::fabs(tau_ratio) > cut_tau_ratio_max) {  // bad match
-                    continue;
-                }
-                const float dPhi = traccc::detail::wrap_phi(Phi2 - params2.w);
-                if (math::fabs(dPhi) > cut_dphi_max) {
-                    continue;
-                }
-                const float dcurv = curv2 - params2.y;
-                if (math::fabs(dcurv) > cut_dcurv_max) {
-                    continue;
-                }
-                best_val[num_nei] = edge2_idx;
-                best_key[num_nei] = d_edge_nodes[edge2_idx].x;
-                ++num_nei;
-                if (num_nei == K) {  // set just filled: seal the max
-                    max_key = best_key[0];
-                    max_pos = 0u;
-                    for (unsigned int j = 1u; j < K; j++) {
-                        if (best_key[j] > max_key) {
-                            max_key = best_key[j];
-                            max_pos = j;
-                        }
-                    }
-                }
-            }
-        }
+            const float4 params2 = d_edge_params[edge2_idx];
 
-        // Mark only the final survivors as kept (eviction means an
-        // inserted-then-evicted candidate must not stay marked).
-        for (unsigned char i = 0; i < num_nei; i++) {
-            d_neighbours[nei_pos + i] = best_val[i];
-            d_inclusive_kept[best_val[i]] = 1u;
+            const float tau_ratio = params2.x * uat_2 - 1.0f;
+            if (math::fabs(tau_ratio) > cut_tau_ratio_max) {  // bad match
+                continue;
+            }
+
+            const float dPhi = traccc::detail::wrap_phi(Phi2 - params2.w);
+            if (math::fabs(dPhi) > cut_dphi_max) {
+                continue;
+            }
+
+            const float dcurv = curv2 - params2.y;
+            if (math::fabs(dcurv) > cut_dcurv_max) {
+                continue;
+            }
+
+            d_neighbours[nei_pos + num_nei] = edge2_idx;
+            d_reIndexer[edge2_idx] = 1;
+            ++num_nei;
         }
 
         d_num_neighbours[globalIndex] = num_nei;
 
         if (num_nei != 0) {
-            d_inclusive_kept[globalIndex] = 1u;
+            d_reIndexer[globalIndex] = 1;
+            vecmem::device_atomic_ref<unsigned int>(
+                *payload.nConnectionsCounter)
+                .fetch_add(static_cast<unsigned int>(num_nei));
         }
     }
 }
