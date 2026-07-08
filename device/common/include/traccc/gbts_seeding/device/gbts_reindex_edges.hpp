@@ -21,17 +21,22 @@ namespace traccc::device {
 struct gbts_reindex_edges_payload {
     /// Number of original edges
     unsigned int nEdges;
-    /// In/out: per-edge "kept" flag in, compact new index out
-    vecmem::data::vector_view<int> reIndexer;
+    /// In/out: 0/1 per-edge "kept" flags from gbts_match_graph_edges in,
+    /// inclusive kept-count out (in place): inclusive_kept[e] = number of
+    /// kept edges in [0, e], so a kept edge's compact index is
+    /// inclusive_kept[e] - 1. Consumed directly by gbts_compress_graph.
+    vecmem::data::vector_view<unsigned int> inclusive_kept;
     /// In/out: global atomic counter of edges that survived re-indexing
     unsigned int* nConnectedEdgesCounter;
 };
 
-/// @brief Replace the per-edge "kept" flag with its compacted index.
+/// @brief Turn the 0/1 kept flags into the inclusive kept-count, in place.
 ///
-/// Each thread reads its slot in the re-indexer; if the edge is marked
-/// "kept", it atomically claims the next compact slot and writes that
-/// compact index back; otherwise the slot is set to a sentinel.
+/// The CUDA backend implements this as a deterministic in-place
+/// thrust::inclusive_scan. The fallback below only claims compact indices
+/// atomically and does NOT produce the monotone counts that
+/// gbts_compress_graph's kept-test requires -- it must be replaced by a scan
+/// when the SYCL/alpaka backends are ported.
 ///
 /// @param[in] thread_id Thread identifier for the kernel launch
 /// @param[in] payload   The global memory payload

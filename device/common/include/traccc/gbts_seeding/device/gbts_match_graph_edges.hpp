@@ -40,10 +40,10 @@ struct gbts_match_graph_edges_payload {
     vecmem::data::vector_view<unsigned char> num_neighbours;
     /// Output: neighbour edge indices, nMaxNei entries per edge (flat)
     vecmem::data::vector_view<unsigned int> neighbours;
-    /// Output: per-edge "kept" flag, later compacted into a re-index
-    vecmem::data::vector_view<int> reIndexer;
-    /// In/out: global atomic counter of total accepted connections
-    unsigned int* nConnectionsCounter;
+    /// Output: per-edge "kept" flag written as 1 (buffer must be zeroed
+    /// beforehand); gbts_reindex_edges then turns it in place into the
+    /// inclusive kept-count used by gbts_compress_graph
+    vecmem::data::vector_view<unsigned int> inclusive_kept;
 };
 
 /// @brief For each edge, find compatible neighbour edges sharing its outer
@@ -51,8 +51,7 @@ struct gbts_match_graph_edges_payload {
 ///
 /// One thread per edge pair-tests the edge against every edge leaving its
 /// outer node using the packed edge parameters, recording up to nMaxNei
-/// accepted neighbours, marking the edge as "kept", and atomically
-/// incrementing the connection counter.
+/// accepted neighbours and marking the edge as "kept".
 ///
 /// @param[in] thread_id Thread identifier for the kernel launch
 /// @param[in] payload   The global memory payload

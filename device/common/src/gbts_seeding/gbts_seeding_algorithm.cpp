@@ -343,50 +343,53 @@ auto gbts_seeding_algorithm::create_edges(
     vecmem::data::vector_buffer<unsigned char> num_neighbours_buf(nEdges,
                                                                   mr().main);
     copy().setup(num_neighbours_buf)->ignore();
-    copy().memset(num_neighbours_buf, 0)->ignore();
 
-    vecmem::data::vector_buffer<int> reIndexer_buf(nEdges, mr().main);
-    copy().setup(reIndexer_buf)->ignore();
-    // Byte-fill 0xFF -> int -1, the "edge not kept" sentinel checked by
-    // gbts_reindex_edges / gbts_compress_graph.
-    copy().memset(reIndexer_buf, 0xFF)->ignore();
+    // 0/1 kept flags written by gbts_match_graph_edges (hence the zero-init),
+    // turned in place into the inclusive kept-count by gbts_reindex_edges:
+    // kept edge e's compact index is inclusive_kept[e] - 1, consumed directly
+    // by gbts_compress_graph.
+    vecmem::data::vector_buffer<unsigned int> inclusive_kept_buf(nEdges,
+                                                                 mr().main);
+    copy().setup(inclusive_kept_buf)->ignore();
+    copy().memset(inclusive_kept_buf, 0)->ignore();
 
     vecmem::data::vector_buffer<unsigned int> neighbours_buf(
         cfg.max_num_neighbours * nEdges, mr().main);
     copy().setup(neighbours_buf)->ignore();
-    copy().memset(neighbours_buf, 0)->ignore();
 
     gbts_match_graph_edges_kernel(
         {nEdges, cfg.max_num_neighbours, cfg.gbts_match_graph_edges_params,
          edge_params_buf, edge_nodes_buf, num_incoming_edges_buf,
-         edge_links_buf, num_neighbours_buf, neighbours_buf, reIndexer_buf,
-         d_counters + gbts_counter::nConnections});
+         edge_links_buf, num_neighbours_buf, neighbours_buf,
+         inclusive_kept_buf});
 
     // 5. Edge re-indexing to keep only edges involved in any connection.
-    gbts_reindex_edges_kernel(
-        {nEdges, reIndexer_buf, d_counters + gbts_counter::nConnectedEdges});
+    gbts_reindex_edges_kernel({nEdges, inclusive_kept_buf,
+                               d_counters + gbts_counter::nConnectedEdges});
 
     copy()(counters_buf, h_counters)->wait();
 
-    const unsigned int nConnections = h_counters[gbts_counter::nConnections];
     const unsigned int nConnectedEdges =
         h_counters[gbts_counter::nConnectedEdges];
-    TRACCC_DEBUG("created " << nConnections << " edge links, found "
-                            << nConnectedEdges
+    TRACCC_DEBUG("found " << nConnectedEdges
                             << " connected edges for seed extraction");
     if (nConnectedEdges == 0) {
         TRACCC_WARNING("No connected edges were found");
         return graph_making_output{};
     }
 
+    // Exact-size allocation AFTER the readback: an nEdges worst-case buffer
+    // (which would let compress launch before the readback) was measurably
+    // slower -- per-event ~60 MB variable-size requests defeat the memory
+    // pool and can fall through to synchronous cudaMalloc.
     const unsigned int nIntsPerEdge = 2 + 1 + cfg.max_num_neighbours;
     vecmem::data::vector_buffer<unsigned int> output_graph_buf(
         nConnectedEdges * nIntsPerEdge, mr().main);
     copy().setup(output_graph_buf)->ignore();
 
-    gbts_compress_graph_kernel(
-        {nEdges, cfg.max_num_neighbours, node_index, edge_nodes_buf,
-         num_neighbours_buf, neighbours_buf, reIndexer_buf, output_graph_buf});
+    gbts_compress_graph_kernel({nEdges, cfg.max_num_neighbours, edge_nodes_buf,
+                                num_neighbours_buf, neighbours_buf,
+                                inclusive_kept_buf, output_graph_buf});
 
     return graph_making_output{std::move(output_graph_buf), nConnectedEdges};
 }

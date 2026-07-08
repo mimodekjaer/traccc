@@ -134,13 +134,6 @@ __global__ void gbts_match_graph_edges(
     device::gbts_match_graph_edges(details::thread_id1{}, payload);
 }
 
-/// CUDA kernel for running @c traccc::device::gbts_reindex_edges
-__global__ void gbts_reindex_edges(
-    const device::gbts_reindex_edges_payload payload) {
-
-    device::gbts_reindex_edges(details::thread_id1{}, payload);
-}
-
 /// CUDA kernel for running @c traccc::device::gbts_compress_graph
 __global__ void gbts_compress_graph(
     const device::gbts_compress_graph_payload payload) {
@@ -351,11 +344,25 @@ void gbts_seeding_algorithm::gbts_match_graph_edges_kernel(
 void gbts_seeding_algorithm::gbts_reindex_edges_kernel(
     const device::gbts_reindex_edges_payload& payload) const {
 
-    const unsigned int n_threads = 256;
-    const unsigned int n_blocks = 1 + (payload.nEdges - 1) / n_threads;
-    kernels::gbts_reindex_edges<<<n_blocks, n_threads, 0,
-                                  details::get_stream(stream())>>>(payload);
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());  //
+    // Deterministic, atomic-free compaction: an IN-PLACE prefix scan of the
+    // 0/1 kept flags written by gbts_match_graph_edges. Kept edge e gets
+    // compacted index inclusive_kept[e] - 1 (edge-index order);
+    // gbts_compress_graph consumes the scan directly, so no separate flag
+    // array or index write-back pass is needed.
+    const auto policy =
+        thrust::cuda::par_nosync(std::pmr::polymorphic_allocator(&(mr().main)))
+            .on(details::get_stream(stream()));
+
+    unsigned int* const incl = payload.inclusive_kept.ptr();
+    const unsigned int n = payload.nEdges;
+
+    // inclusive_kept[e] = number of kept edges in [0, e].
+    thrust::inclusive_scan(policy, incl, incl + n, incl);
+
+    // Total kept = last inclusive value -> the nConnectedEdges counter, which
+    // the orchestrator reads back to size the stage-3 buffers.
+    thrust::copy(policy, incl + (n - 1), incl + n,
+                 payload.nConnectedEdgesCounter);
 }
 
 void gbts_seeding_algorithm::gbts_compress_graph_kernel(

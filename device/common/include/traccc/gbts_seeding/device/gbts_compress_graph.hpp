@@ -24,16 +24,16 @@ struct gbts_compress_graph_payload {
     unsigned int nEdges;
     /// Maximum number of neighbours retained per edge
     unsigned int nMaxNei;
-    /// Sorted-slot to original spacepoint index map
-    vecmem::data::vector_view<const unsigned int> orig_node_index;
-    /// (src, dst) node indices per edge
+    /// (src, dst) sorted-node slots per edge
     vecmem::data::vector_view<const uint2> edge_nodes;
     /// Number of accepted neighbours per edge
     vecmem::data::vector_view<const unsigned char> num_neighbours;
     /// Neighbour edge indices per edge (nMaxNei per edge, flat)
     vecmem::data::vector_view<const unsigned int> neighbours;
-    /// Old-edge to compacted-edge index map
-    vecmem::data::vector_view<const int> reIndexer;
+    /// From gbts_reindex_edges: inclusive_kept[e] = number of kept edges in
+    /// [0, e]. Kept(e) <=> the count increases at e; a kept edge's compact
+    /// index is inclusive_kept[e] - 1.
+    vecmem::data::vector_view<const unsigned int> inclusive_kept;
     /// Output: compacted graph in row-major layout; each edge owns a block
     /// of edge_size = 2 + 1 + nMaxNei ints (node1, node2, nNei,
     /// nei0..neiN-1).
@@ -44,7 +44,7 @@ struct gbts_compress_graph_payload {
 ///
 /// Each thread processes one original edge; if it survived re-indexing, the
 /// thread writes a record at its compact slot containing the
-/// source/destination original-SP indices, the neighbour count, and up to
+/// source/destination sorted-node slots, the neighbour count, and up to
 /// nMaxNei remapped neighbour indices.
 ///
 /// @param[in] thread_id Thread identifier for the kernel launch
