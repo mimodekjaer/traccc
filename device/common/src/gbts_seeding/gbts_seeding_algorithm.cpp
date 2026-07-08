@@ -566,7 +566,7 @@ auto gbts_seeding_algorithm::extract_seeds(
         2 * nSeeds, mr().main, vecmem::data::buffer_type::resizable);
     copy().setup(output_seeds)->ignore();
 
-    vecmem::data::vector_buffer<unsigned long long int> hit_bids_buf(nSp,
+    vecmem::data::vector_buffer<unsigned long long int> hit_bids_buf(nNodes,
                                                                      mr().main);
     copy().setup(hit_bids_buf)->ignore();
     copy().memset(hit_bids_buf, 0)->ignore();
@@ -578,8 +578,9 @@ auto gbts_seeding_algorithm::extract_seeds(
 
     gbts_convert_seeds_kernel(
         {nProps, nSeeds, cfg.max_num_neighbours, seed_proposals_buf,
-         seed_ambiguity_buf, path_store_buf, output_graph, reducedSP,
-         output_seeds, hit_bids_buf, cfg.gbts_convert_seeds_params});
+         seed_ambiguity_buf, path_store_buf, output_graph, node_xyzw,
+         node_index, output_seeds, hit_bids_buf,
+         cfg.gbts_convert_seeds_params});
 
     const unsigned int outputSeeds = copy().get_size(output_seeds);
     TRACCC_DEBUG("GBTS found " << outputSeeds << " seeds");

@@ -210,11 +210,25 @@ __global__ void gbts_reset_edge_bids(
     device::gbts_reset_edge_bids(details::thread_id1{}, payload);
 }
 
+/// CUDA kernel for running @c traccc::device::gbts_rebid_promote_seeds
+__global__ void gbts_rebid_promote_seeds(
+    const device::gbts_rebid_seeds_for_edges_payload payload) {
+
+    device::gbts_rebid_promote_seeds(details::thread_id1{}, payload);
+}
+
 /// CUDA kernel for running @c traccc::device::gbts_rebid_seeds_for_edges
 __global__ void gbts_rebid_seeds_for_edges(
     const device::gbts_rebid_seeds_for_edges_payload payload) {
 
     device::gbts_rebid_seeds_for_edges(details::thread_id1{}, payload);
+}
+
+/// CUDA kernel for running @c traccc::device::gbts_mark_rebid_losers
+__global__ void gbts_mark_rebid_losers(
+    const device::gbts_rebid_seeds_for_edges_payload payload) {
+
+    device::gbts_mark_rebid_losers(details::thread_id1{}, payload);
 }
 
 /// CUDA kernel for running @c traccc::device::gbts_bid_seeds_for_hits
