@@ -504,9 +504,24 @@ void gbts_seeding_algorithm::gbts_rebid_seeds_for_edges_kernel(
 
     const unsigned int n_threads = 128;
     const unsigned int n_blocks = 1 + (payload.nProps - 1) / n_threads;
+    // Pass A: promote/reject and initialise the bidders' ambiguity to 0 (each
+    // thread writes only its own slot). The kernel boundary guarantees this
+    // completes before any loser-marking in the bid pass.
+    kernels::gbts_rebid_promote_seeds<<<n_blocks, n_threads, 0,
+                                        details::get_stream(stream())>>>(
+        payload);
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    // Pass B1: the flagged proposals place their bids (fetch_max only, no
+    // marking).
     kernels::gbts_rebid_seeds_for_edges<<<n_blocks, n_threads, 0,
                                           details::get_stream(stream())>>>(
         payload);
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
+    // Pass B2: with the bids settled, each active proposal derives its own
+    // won/lost state from the final per-edge maxima (own-slot writes only), so
+    // the round's outcome is independent of atomic ordering.
+    kernels::gbts_mark_rebid_losers<<<n_blocks, n_threads, 0,
+                                      details::get_stream(stream())>>>(payload);
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
@@ -528,7 +543,7 @@ void gbts_seeding_algorithm::gbts_convert_seeds_kernel(
     const unsigned int n_blocks = 1 + (payload.nProps - 1) / n_threads;
     kernels::gbts_convert_seeds<<<n_blocks, n_threads, 0,
                                   details::get_stream(stream())>>>(payload);
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());  //
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 
 }  // namespace traccc::cuda

@@ -530,14 +530,19 @@ auto gbts_seeding_algorithm::extract_seeds(
         return {0, mr().main};
     }
 
+    // Per-proposal "bids this round" flag for the deterministic two-pass
+    // bidding (set by the promote pass, read by the bid pass).
+    vecmem::data::vector_buffer<char> bid_active_buf(nProps, mr().main);
+    copy().setup(bid_active_buf)->ignore();
+
     // 7. Disambiguate seeds through repeated seed-vs-edge bidding rounds.
     for (unsigned int round = 0; round < cfg.edge_bidding_rounds; ++round) {
         copy().memset(edge_bids_buf, 0)->ignore();
 
         gbts_rebid_seeds_for_edges_kernel(
             {nProps, path_store_buf, seed_proposals_buf, edge_bids_buf,
-             seed_ambiguity_buf, d_counters + gbts_counter::nRejected,
-             round == 0u});
+             seed_ambiguity_buf, bid_active_buf,
+             d_counters + gbts_counter::nRejected, round == 0u});
 
         gbts_reset_edge_bids_kernel({nProps, path_store_buf, seed_proposals_buf,
                                      edge_bids_buf, seed_ambiguity_buf,
