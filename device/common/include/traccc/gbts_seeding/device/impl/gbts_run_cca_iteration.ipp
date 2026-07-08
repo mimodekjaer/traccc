@@ -15,6 +15,7 @@
 
 // VecMem include(s).
 #include <vecmem/containers/device_vector.hpp>
+#include <vecmem/memory/device_atomic_ref.hpp>
 
 namespace traccc::device {
 
@@ -33,57 +34,13 @@ TRACCC_HOST_DEVICE inline void gbts_run_cca_iteration(
 
     const unsigned int edge_size = 2 + 1 + payload.max_num_neighbours;
 
-    const unsigned int globalIdx = thread_id.getGlobalThreadIdX();
-    const unsigned int blockDimX = thread_id.getBlockDimX();
-    const unsigned int gridDimX = thread_id.getGridDimX();
-
-    if (payload.count_pass) {
-        // Post-CCA path-count / terminus-flag sweep. The levels are final, so
-        // every value read here settled at a kernel boundary. Pass k processes
-        // exactly the edges at level k+1: their level-k children's counts were
-        // written in pass k-1. The only cross-thread writes store the single
-        // value -1 into a neighbour's .y (idempotent 2-byte stores; the
-        // owner's .x is a separate 2-byte store, so nothing tears) -- the
-        // result is a pure function of the graph, independent of thread
-        // ordering.
-        for (unsigned int globalIndex = globalIdx;
-             globalIndex < payload.nConnectedEdges;
-             globalIndex += blockDimX * gridDimX) {
-
-            const unsigned char level = d_levels[globalIndex];
-            if (level != static_cast<unsigned char>(iter + 1)) {
-                continue;
-            }
-
-            const unsigned int edge_pos = edge_size * globalIndex;
-            const unsigned int nNeighbours =
-                d_output_graph[edge_pos + gbts_consts::nNei];
-
-            short out_paths = 0;
-            for (unsigned int nIdx = 0; nIdx < nNeighbours; nIdx++) {
-                const unsigned int nextglobalIndex =
-                    d_output_graph[edge_pos + gbts_consts::nei_start + nIdx];
-                if (level == 1 + d_levels[nextglobalIndex]) {
-                    // a path continues from the neighbour into this edge
-                    out_paths = static_cast<short>(
-                        out_paths + 1 + d_outgoing_paths[nextglobalIndex].x);
-                }
-                // every neighbour has this edge as a predecessor, so it can
-                // never start a path of its own
-                d_outgoing_paths[nextglobalIndex].y = -1;
-            }
-            d_outgoing_paths[globalIndex].x = out_paths;
-            if (level < payload.minLevel) {
-                // too short to seed a path of its own
-                d_outgoing_paths[globalIndex].y = -1;
-            }
-        }
-        return;
-    }
-
     const unsigned int toggle = iter % 2;
     const unsigned int levelLoad = toggle * payload.nConnectedEdges;
     const unsigned int levelStore = (1 - toggle) * payload.nConnectedEdges;
+
+    const unsigned int globalIdx = thread_id.getGlobalThreadIdX();
+    const unsigned int blockDimX = thread_id.getBlockDimX();
+    const unsigned int gridDimX = thread_id.getGridDimX();
 
     for (unsigned int globalIndex = globalIdx;
          globalIndex < payload.nConnectedEdges;
@@ -115,20 +72,28 @@ TRACCC_HOST_DEVICE inline void gbts_run_cca_iteration(
         }
         if (localChange) {
             if (iter == traccc::device::gbts_consts::max_cca_iter - 1) {
-                // hit the iteration cap while still growing: never a terminus
-                // (own-slot write, race-free)
                 d_outgoing_paths[globalIndex].y = -1;
                 d_active_edges[globalIndex] = -1;
             } else {
                 d_active_edges[globalIndex] = static_cast<char>(iter + 1u);
             }
         } else {
-            // settled -- the path counting / terminus flagging happens in the
-            // count passes once ALL levels are final (the old in-place version
-            // raced against same-iteration neighbour settles: its full short2
-            // store could be lost to a concurrent neighbour .y = -1 mark, and
-            // it read neighbour counts that were not yet written)
             d_active_edges[globalIndex] = -1;
+            short out_paths = 0;
+            for (unsigned int nIdx = 0; nIdx < nNeighbours; ++nIdx) {
+                const unsigned int nextglobalIndex =
+                    d_output_graph[edge_pos + gbts_consts::nei_start + nIdx];
+                if (next_level == 1 + d_levels[nextglobalIndex]) {
+                    out_paths = static_cast<short>(
+                        out_paths + 1 + d_outgoing_paths[nextglobalIndex].x);
+                }
+                // flag as not terminus edge
+                d_outgoing_paths[nextglobalIndex].y = -1;
+            }
+            // flag as long enough segement to become a seed
+            d_outgoing_paths[globalIndex] = short2{
+                out_paths,
+                static_cast<short>((next_level >= payload.minLevel) - 1)};
         }
         // store new level
         d_levels[levelStore + globalIndex] = next_level;

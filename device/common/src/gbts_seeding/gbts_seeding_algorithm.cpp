@@ -430,27 +430,13 @@ auto gbts_seeding_algorithm::extract_seeds(
     vecmem::data::vector_buffer<short2> outgoing_paths_buf(nConnectedEdges,
                                                            mr().main);
     copy().setup(outgoing_paths_buf)->ignore();
-    copy().memset(outgoing_paths_buf, 0)->ignore();
 
     for (unsigned char iter = 0;
          iter < traccc::device::gbts_consts::max_cca_iter; ++iter) {
         gbts_run_cca_iteration_kernel({nConnectedEdges, cfg.max_num_neighbours,
                                        cfg.minLevel, output_graph, levels_buf,
                                        active_edges_buf, outgoing_paths_buf,
-                                       iter, false});
-    }
-
-    // Post-CCA path-count / terminus-flag sweep: with the levels final, pass k
-    // processes the edges at level k+1, reading their level-k children's
-    // counts from the previous pass (kernel boundary). This replaces the old
-    // in-iteration counting, whose cross-thread outgoing_paths writes could
-    // race between same-iteration settles (run-to-run varying terminus set).
-    for (unsigned char iter = 0;
-         iter <= traccc::device::gbts_consts::max_cca_iter; ++iter) {
-        gbts_run_cca_iteration_kernel({nConnectedEdges, cfg.max_num_neighbours,
-                                       cfg.minLevel, output_graph, levels_buf,
-                                       active_edges_buf, outgoing_paths_buf,
-                                       iter, true});
+                                       iter});
     }
 
     gbts_count_terminus_edges_kernel(

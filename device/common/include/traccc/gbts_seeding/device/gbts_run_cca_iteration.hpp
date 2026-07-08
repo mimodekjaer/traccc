@@ -36,30 +36,18 @@ struct gbts_run_cca_iteration_payload {
     /// In/out: per-edge active-flag (holds the next iter index, or -1
     /// once the edge is no longer active).
     vecmem::data::vector_view<char> active_edges;
-    /// Output: per-edge (reachable-path count, terminus flag); must be zeroed
-    /// before iteration 0
+    /// Output: longest outgoing-path summary per edge (length, next-edge)
     vecmem::data::vector_view<short2> outgoing_paths;
-    /// Iteration index (0-based): the CCA iteration in the level passes, the
-    /// level-1 being processed in the count passes
+    /// Iteration index (0-based)
     unsigned char iter;
-    /// False: CCA level-relaxation pass. True: post-CCA path-count /
-    /// terminus-flag pass (levels must be final)
-    bool count_pass;
 };
 
-/// @brief One iteration of the cellular-automaton "longest path" relaxation,
-/// or (count_pass) one level of the post-CCA path-count sweep.
+/// @brief One iteration of the cellular-automaton "longest path" relaxation.
 ///
-/// Level pass: threads process the current active-edge list, propagate levels
-/// along the compact graph into the opposite ping-pong half (selected by iter
-/// parity), and update the per-edge active flag -- own-slot writes only.
-///
-/// Count pass: runs after the levels are final. Pass k processes exactly the
-/// edges at level k+1: each sums its reachable paths from its level-k
-/// children (counted in pass k-1, so the read crosses a kernel boundary) and
-/// flags all its neighbours as non-terminus. The only cross-thread writes
-/// store the single value -1 (idempotent), so the result is a pure function
-/// of the graph -- no dependence on thread ordering.
+/// Threads cooperatively process the current active-edge list, propagate
+/// levels along the compact graph, and write the next iteration's active set
+/// into the opposite ping-pong buffer (selected by iter parity).  The
+/// final block to finish records the longest outgoing path summary per edge.
 ///
 /// @param[in] thread_id Thread identifier for the kernel launch
 /// @param[in] payload   The global memory payload
