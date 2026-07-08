@@ -13,6 +13,7 @@
 
 // System include(s).
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 
 namespace traccc::alpaka {
@@ -72,10 +73,6 @@ full_chain_algorithm::full_chain_algorithm(
       m_spacepoint_formation({m_cached_device_mr, &m_cached_pinned_host_mr},
                              m_vecmem_objects.async_copy(), m_queue,
                              logger->cloneWithSuffix("SpFormationAlg")),
-      m_seeding(finder_config, grid_config, filter_config,
-                {m_cached_device_mr, &m_cached_pinned_host_mr},
-                m_vecmem_objects.async_copy(), m_queue,
-                logger->cloneWithSuffix("SeedingAlg")),
       m_track_parameter_estimation(
           track_params_estimation_config,
           {m_cached_device_mr, &m_cached_pinned_host_mr},
@@ -97,11 +94,21 @@ full_chain_algorithm::full_chain_algorithm(
       m_fitting_config(fitting_config),
       usingGBTS(useGBTS) {
 
+    // Construct the seeding algorithm requested by the configuration.
     if (usingGBTS) {
-        std::cout << "GBTS not implemented for alpaka, this will run with "
-                     "triplet seeding"
-                  << std::endl;
+        m_seeding = std::make_unique<gbts_seeding_algorithm>(
+            gbts_config,
+            memory_resource{m_cached_device_mr, &m_cached_pinned_host_mr},
+            m_vecmem_objects.async_copy(), m_queue,
+            logger->cloneWithSuffix("GbtsSeedingAlg"));
+    } else {
+        m_seeding = std::make_unique<triplet_seeding_algorithm>(
+            finder_config, grid_config, filter_config,
+            memory_resource{m_cached_device_mr, &m_cached_pinned_host_mr},
+            m_vecmem_objects.async_copy(), m_queue,
+            logger->cloneWithSuffix("TripletSeedingAlg"));
     }
+
     std::cout << traccc::alpaka::get_device_info() << std::endl;
 
     // Copy the detector (description) to the device.
@@ -162,11 +169,6 @@ full_chain_algorithm::full_chain_algorithm(const full_chain_algorithm& parent)
       m_spacepoint_formation({m_cached_device_mr, &m_cached_pinned_host_mr},
                              m_vecmem_objects.async_copy(), m_queue,
                              parent.logger().cloneWithSuffix("SpFormationAlg")),
-      m_seeding(parent.m_finder_config, parent.m_grid_config,
-                parent.m_filter_config,
-                {m_cached_device_mr, &m_cached_pinned_host_mr},
-                m_vecmem_objects.async_copy(), m_queue,
-                parent.logger().cloneWithSuffix("SeedingAlg")),
       m_track_parameter_estimation(
           parent.m_track_params_estimation_config,
           {m_cached_device_mr, &m_cached_pinned_host_mr},
@@ -189,6 +191,22 @@ full_chain_algorithm::full_chain_algorithm(const full_chain_algorithm& parent)
       m_finding_config(parent.m_finding_config),
       m_fitting_config(parent.m_fitting_config),
       usingGBTS(parent.usingGBTS) {
+
+    // Construct the seeding algorithm requested by the configuration.
+    if (usingGBTS) {
+        m_seeding = std::make_unique<gbts_seeding_algorithm>(
+            parent.m_gbts_config,
+            memory_resource{m_cached_device_mr, &m_cached_pinned_host_mr},
+            m_vecmem_objects.async_copy(), m_queue,
+            parent.logger().cloneWithSuffix("GbtsSeedingAlg"));
+    } else {
+        m_seeding = std::make_unique<triplet_seeding_algorithm>(
+            parent.m_finder_config, parent.m_grid_config,
+            parent.m_filter_config,
+            memory_resource{m_cached_device_mr, &m_cached_pinned_host_mr},
+            m_vecmem_objects.async_copy(), m_queue,
+            parent.logger().cloneWithSuffix("TripletSeedingAlg"));
+    }
 
     // Copy the detector (description) to the device.
     m_vecmem_objects.async_copy().setup(m_device_det_descr)->wait();
@@ -229,8 +247,9 @@ full_chain_algorithm::output_type full_chain_algorithm::operator()(
         const spacepoint_formation_algorithm::output_type spacepoints =
             m_spacepoint_formation(m_device_detector, measurements);
         const seed_parameter_estimation_algorithm::output_type track_params =
-            m_track_parameter_estimation(m_field, measurements, spacepoints,
-                                         m_seeding(spacepoints));
+            m_track_parameter_estimation(
+                m_field, measurements, spacepoints,
+                (*m_seeding)(spacepoints, measurements));
 
         // Run the track finding (asynchronously).
         const finding_algorithm::output_type track_candidates =
@@ -285,8 +304,9 @@ bound_track_parameters_collection_types::host full_chain_algorithm::seeding(
         const spacepoint_formation_algorithm::output_type spacepoints =
             m_spacepoint_formation(m_device_detector, measurements);
         const seed_parameter_estimation_algorithm::output_type track_params =
-            m_track_parameter_estimation(m_field, measurements, spacepoints,
-                                         m_seeding(spacepoints));
+            m_track_parameter_estimation(
+                m_field, measurements, spacepoints,
+                (*m_seeding)(spacepoints, measurements));
 
         // Copy a limited amount of result data back to the host.
         const auto host_seeds = m_vecmem_objects.async_copy().to(

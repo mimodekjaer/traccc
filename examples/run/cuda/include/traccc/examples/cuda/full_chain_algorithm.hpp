@@ -25,6 +25,7 @@
 #include "traccc/geometry/detector_buffer.hpp"
 #include "traccc/geometry/detector_design_description.hpp"
 #include "traccc/geometry/host_detector.hpp"
+#include "traccc/seeding/device/seeding_algorithm.hpp"
 #include "traccc/utils/algorithm.hpp"
 #include "traccc/utils/messaging.hpp"
 #include "traccc/utils/propagation.hpp"
@@ -161,10 +162,8 @@ class full_chain_algorithm
     measurement_sorting_algorithm m_measurement_sorting;
     /// Spacepoint formation algorithm
     spacepoint_formation_algorithm m_spacepoint_formation;
-    /// Seeding algorithm
-    triplet_seeding_algorithm m_seeding;
-    /// Seeding with GBTS algorithm
-    gbts_seeding_algorithm m_gbts_seeding;
+    /// Seeding algorithm (triplet or GBTS, chosen at construction)
+    std::unique_ptr<const device::seeding_algorithm> m_seeding;
     /// Track parameter estimation algorithm
     seed_parameter_estimation_algorithm m_track_parameter_estimation;
 

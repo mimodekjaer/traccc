@@ -29,6 +29,7 @@
 #include "traccc/gbts_seeding/device/gbts_reset_edge_bids.hpp"
 #include "traccc/gbts_seeding/device/gbts_run_cca_iteration.hpp"
 #include "traccc/gbts_seeding/device/gbts_sort_nodes.hpp"
+#include "traccc/seeding/device/seeding_algorithm.hpp"
 
 // Project include(s).
 #include "traccc/edm/measurement_collection.hpp"
@@ -36,7 +37,6 @@
 #include "traccc/edm/spacepoint_collection.hpp"
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
 #include "traccc/gbts_seeding/gbts_types.hpp"
-#include "traccc/utils/algorithm.hpp"
 #include "traccc/utils/memory_resource.hpp"
 #include "traccc/utils/messaging.hpp"
 
@@ -62,9 +62,7 @@ namespace traccc::device {
 /// synchronisation statement is required before destroying this buffer.
 ///
 class gbts_seeding_algorithm
-    : public algorithm<edm::seed_collection::buffer(
-          const edm::spacepoint_collection::const_view&,
-          const edm::measurement_collection::const_view&)>,
+    : public seeding_algorithm,
       public messaging,
       public algorithm_base {
 

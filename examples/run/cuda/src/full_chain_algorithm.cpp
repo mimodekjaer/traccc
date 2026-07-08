@@ -17,6 +17,7 @@
 
 // System include(s).
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 
 /// Helper macro for checking the return value of CUDA function calls
@@ -87,12 +88,6 @@ full_chain_algorithm::full_chain_algorithm(
       m_spacepoint_formation({m_cached_device_mr, &m_cached_pinned_host_mr},
                              m_copy, m_stream,
                              logger->cloneWithSuffix("SpFormationAlg")),
-      m_seeding(finder_config, grid_config, filter_config,
-                {m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy,
-                m_stream, logger->cloneWithSuffix("SeedingAlg")),
-      m_gbts_seeding(gbts_config,
-                     {m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy,
-                     m_stream, logger->cloneWithSuffix("GbtsAlg")),
       m_track_parameter_estimation(
           track_params_estimation_config,
           {m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy, m_stream,
@@ -110,6 +105,19 @@ full_chain_algorithm::full_chain_algorithm(
       m_finding_config(finding_config),
       m_fitting_config(fitting_config),
       usingGBTS(useGBTS) {
+
+    // Construct the seeding algorithm requested by the configuration.
+    if (usingGBTS) {
+        m_seeding = std::make_unique<gbts_seeding_algorithm>(
+            gbts_config,
+            memory_resource{m_cached_device_mr, &m_cached_pinned_host_mr},
+            m_copy, m_stream, logger->cloneWithSuffix("GbtsSeedingAlg"));
+    } else {
+        m_seeding = std::make_unique<triplet_seeding_algorithm>(
+            finder_config, grid_config, filter_config,
+            memory_resource{m_cached_device_mr, &m_cached_pinned_host_mr},
+            m_copy, m_stream, logger->cloneWithSuffix("TripletSeedingAlg"));
+    }
 
     // Tell the user what device is being used.
     int device = 0;
@@ -174,13 +182,6 @@ full_chain_algorithm::full_chain_algorithm(const full_chain_algorithm& parent)
       m_spacepoint_formation({m_cached_device_mr, &m_cached_pinned_host_mr},
                              m_copy, m_stream,
                              parent.logger().cloneWithSuffix("SpFormationAlg")),
-      m_seeding(parent.m_finder_config, parent.m_grid_config,
-                parent.m_filter_config,
-                {m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy,
-                m_stream, parent.logger().cloneWithSuffix("SeedingAlg")),
-      m_gbts_seeding(parent.m_gbts_config,
-                     {m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy,
-                     m_stream, parent.logger().cloneWithSuffix("GbtsAlg")),
       m_track_parameter_estimation(
           parent.m_track_params_estimation_config,
           {m_cached_device_mr, &m_cached_pinned_host_mr}, m_copy, m_stream,
@@ -200,6 +201,22 @@ full_chain_algorithm::full_chain_algorithm(const full_chain_algorithm& parent)
       m_finding_config(parent.m_finding_config),
       m_fitting_config(parent.m_fitting_config),
       usingGBTS(parent.usingGBTS) {
+
+    // Construct the seeding algorithm requested by the configuration.
+    if (usingGBTS) {
+        m_seeding = std::make_unique<gbts_seeding_algorithm>(
+            parent.m_gbts_config,
+            memory_resource{m_cached_device_mr, &m_cached_pinned_host_mr},
+            m_copy, m_stream,
+            parent.logger().cloneWithSuffix("GbtsSeedingAlg"));
+    } else {
+        m_seeding = std::make_unique<triplet_seeding_algorithm>(
+            parent.m_finder_config, parent.m_grid_config,
+            parent.m_filter_config,
+            memory_resource{m_cached_device_mr, &m_cached_pinned_host_mr},
+            m_copy, m_stream,
+            parent.logger().cloneWithSuffix("TripletSeedingAlg"));
+    }
 
     m_copy.setup(m_device_det_descr)->wait();
     m_copy(vecmem::get_data(m_det_descr.get()), m_device_det_descr)->wait();
@@ -232,12 +249,8 @@ full_chain_algorithm::output_type full_chain_algorithm::operator()(
         const spacepoint_formation_algorithm::output_type spacepoints =
             m_spacepoint_formation(m_device_detector, measurements);
 
-        triplet_seeding_algorithm::output_type seeds;
-        if (usingGBTS) {
-            seeds = m_gbts_seeding(spacepoints, measurements);
-        } else {
-            seeds = m_seeding(spacepoints);
-        }
+        const device::seeding_algorithm::output_type seeds =
+            (*m_seeding)(spacepoints, measurements);
         const seed_parameter_estimation_algorithm::output_type track_params =
             m_track_parameter_estimation(m_field, measurements, spacepoints,
                                          seeds);
@@ -290,12 +303,8 @@ bound_track_parameters_collection_types::host full_chain_algorithm::seeding(
         const spacepoint_formation_algorithm::output_type spacepoints =
             m_spacepoint_formation(m_device_detector, measurements);
 
-        triplet_seeding_algorithm::output_type seeds;
-        if (usingGBTS) {
-            seeds = m_gbts_seeding(spacepoints, measurements);
-        } else {
-            seeds = m_seeding(spacepoints);
-        }
+        const device::seeding_algorithm::output_type seeds =
+            (*m_seeding)(spacepoints, measurements);
         const seed_parameter_estimation_algorithm::output_type track_params =
             m_track_parameter_estimation(m_field, measurements, spacepoints,
                                          seeds);

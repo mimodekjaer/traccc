@@ -13,6 +13,7 @@
 
 // algorithms
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
+#include "traccc/seeding/device/seeding_algorithm.hpp"
 #include "traccc/seeding/seeding_algorithm.hpp"
 #include "traccc/seeding/track_params_estimation.hpp"
 #include "traccc/sycl/gbts_seeding/gbts_seeding_algorithm.hpp"
@@ -55,6 +56,7 @@
 #include <exception>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 
 int seq_run(const traccc::opts::detector& detector_opts,
             const traccc::opts::magnetic_field& bfield_opts,
@@ -125,17 +127,19 @@ int seq_run(const traccc::opts::detector& detector_opts,
         track_params_estimation_config, host_mr,
         logger().clone("HostTrackParEstAlg"));
 
-    traccc::sycl::triplet_seeding_algorithm sa_sycl{
-        seedfinder_config,
-        spacepoint_grid_config,
-        seedfilter_config,
-        mr,
-        copy,
-        traccc_queue,
-        logger().clone("SyclSeedingAlg")};
-    traccc::sycl::gbts_seeding_algorithm gbts_sa_sycl(
-        gbts_config, mr, copy, traccc_queue,
-        logger().clone("SyclGbtsSeedingAlg"));
+    std::unique_ptr<const traccc::device::seeding_algorithm> seeding_alg;
+    if (usingGBTS) {
+        seeding_alg = std::make_unique<traccc::sycl::gbts_seeding_algorithm>(
+            gbts_config, mr, copy, traccc_queue,
+            logger().clone("SyclGbtsSeedingAlg"));
+    } else {
+        seeding_alg =
+            std::make_unique<traccc::sycl::triplet_seeding_algorithm>(
+                seedfinder_config, spacepoint_grid_config, seedfilter_config,
+                mr, copy, traccc_queue,
+                logger().clone("SyclTripletSeedingAlg"));
+    }
+    const traccc::device::seeding_algorithm& sa_sycl = *seeding_alg;
     traccc::sycl::seed_parameter_estimation_algorithm tp_sycl{
         track_params_estimation_config, mr, copy, traccc_queue,
         logger().clone("SyclTrackParEstAlg")};
@@ -202,12 +206,8 @@ int seq_run(const traccc::opts::detector& detector_opts,
             {
                 traccc::performance::timer t("Seeding (sycl)", elapsedTimes);
                 // Reconstruct the spacepoints into seeds.
-                if (usingGBTS) {
-                    seeds_sycl_buffer = gbts_sa_sycl(spacepoints_sycl_buffer,
-                                                     measurements_sycl_buffer);
-                } else {
-                    seeds_sycl_buffer = sa_sycl(spacepoints_sycl_buffer);
-                }
+                seeds_sycl_buffer = sa_sycl(spacepoints_sycl_buffer,
+                                            measurements_sycl_buffer);
                 vecmem_queue.synchronize();
             }  // stop measuring seeding sycl timer
 

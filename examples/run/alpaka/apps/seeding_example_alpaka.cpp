@@ -49,6 +49,7 @@
 #include "traccc/performance/timer.hpp"
 #include "traccc/resolution/fitting_performance_writer.hpp"
 #include "traccc/seeding/detail/track_params_estimation_config.hpp"
+#include "traccc/seeding/device/seeding_algorithm.hpp"
 #include "traccc/seeding/seeding_algorithm.hpp"
 #include "traccc/seeding/track_params_estimation.hpp"
 #include "traccc/utils/propagation.hpp"
@@ -58,6 +59,7 @@
 #include <exception>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 
 using namespace traccc;
 
@@ -159,16 +161,19 @@ int seq_run(const traccc::opts::track_seeding& seeding_opts,
         logger().clone("HostTrackParEstAlg"));
 
     // Alpaka Algorithms
-    traccc::alpaka::triplet_seeding_algorithm sa_alpaka{
-        seedfinder_config,
-        spacepoint_grid_config,
-        seedfilter_config,
-        mr,
-        async_copy,
-        queue,
-        logger().clone("AlpakaSeedingAlg")};
-    traccc::alpaka::gbts_seeding_algorithm gbts_sa_alpaka(
-        gbts_config, mr, copy, queue, logger().clone("AlpakaGbtsSeedingAlg"));
+    std::unique_ptr<const traccc::device::seeding_algorithm> seeding_alg;
+    if (usingGBTS) {
+        seeding_alg = std::make_unique<traccc::alpaka::gbts_seeding_algorithm>(
+            gbts_config, mr, copy, queue,
+            logger().clone("AlpakaGbtsSeedingAlg"));
+    } else {
+        seeding_alg =
+            std::make_unique<traccc::alpaka::triplet_seeding_algorithm>(
+                seedfinder_config, spacepoint_grid_config, seedfilter_config,
+                mr, async_copy, queue,
+                logger().clone("AlpakaTripletSeedingAlg"));
+    }
+    const traccc::device::seeding_algorithm& sa_alpaka = *seeding_alg;
     traccc::alpaka::seed_parameter_estimation_algorithm tp_alpaka{
         track_params_estimation_config, mr, async_copy, queue,
         logger().clone("AlpakaTrackParEstAlg")};
@@ -268,14 +273,9 @@ int seq_run(const traccc::opts::track_seeding& seeding_opts,
             {
                 traccc::performance::timer t("Seeding (alpaka)", elapsedTimes);
                 // Reconstruct the spacepoints into seeds.
-                if (usingGBTS) {
-                    seeds_alpaka_buffer = gbts_sa_alpaka(
-                        vecmem::get_data(spacepoints_alpaka_buffer),
-                        vecmem::get_data(measurements_alpaka_buffer));
-                } else {
-                    seeds_alpaka_buffer =
-                        sa_alpaka(vecmem::get_data(spacepoints_alpaka_buffer));
-                }
+                seeds_alpaka_buffer = sa_alpaka(
+                    vecmem::get_data(spacepoints_alpaka_buffer),
+                    vecmem::get_data(measurements_alpaka_buffer));
                 queue.synchronize();
             }
 

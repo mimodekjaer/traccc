@@ -47,6 +47,7 @@
 #include "traccc/performance/timer.hpp"
 #include "traccc/resolution/fitting_performance_writer.hpp"
 #include "traccc/seeding/detail/track_params_estimation_config.hpp"
+#include "traccc/seeding/device/seeding_algorithm.hpp"
 #include "traccc/seeding/seeding_algorithm.hpp"
 #include "traccc/seeding/track_params_estimation.hpp"
 #include "traccc/utils/propagation.hpp"
@@ -67,6 +68,7 @@
 #include <exception>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 
 using namespace traccc;
 
@@ -180,16 +182,17 @@ int seq_run(const traccc::opts::track_seeding& seeding_opts,
 
     vecmem::cuda::async_copy async_copy{stream.cudaStream()};
 
-    traccc::cuda::triplet_seeding_algorithm sa_cuda{
-        seedfinder_config,
-        spacepoint_grid_config,
-        seedfilter_config,
-        mr,
-        async_copy,
-        stream,
-        logger().clone("CudaSeedingAlg")};
-    traccc::cuda::gbts_seeding_algorithm gbts_sa_cuda(
-        gbts_config, mr, copy, stream, logger().clone("CudaGbtsSeedingAlg"));
+    std::unique_ptr<const traccc::device::seeding_algorithm> seeding_alg;
+    if (usingGBTS) {
+        seeding_alg = std::make_unique<traccc::cuda::gbts_seeding_algorithm>(
+            gbts_config, mr, copy, stream,
+            logger().clone("CudaGbtsSeedingAlg"));
+    } else {
+        seeding_alg = std::make_unique<traccc::cuda::triplet_seeding_algorithm>(
+            seedfinder_config, spacepoint_grid_config, seedfilter_config, mr,
+            async_copy, stream, logger().clone("CudaTripletSeedingAlg"));
+    }
+    const traccc::device::seeding_algorithm& sa_cuda = *seeding_alg;
     traccc::cuda::seed_parameter_estimation_algorithm tp_cuda{
         track_params_estimation_config, mr, async_copy, stream,
         logger().clone("CudaTrackParEstAlg")};
@@ -274,12 +277,8 @@ int seq_run(const traccc::opts::track_seeding& seeding_opts,
             {
                 traccc::performance::timer t("Seeding (cuda)", elapsedTimes);
                 // Reconstruct the spacepoints into seeds.
-                if (usingGBTS) {
-                    seeds_cuda_buffer = gbts_sa_cuda(spacepoints_cuda_buffer,
-                                                     measurements_cuda_buffer);
-                } else {
-                    seeds_cuda_buffer = sa_cuda(spacepoints_cuda_buffer);
-                }
+                seeds_cuda_buffer = sa_cuda(spacepoints_cuda_buffer,
+                                            measurements_cuda_buffer);
                 stream.synchronize();
             }  // stop measuring seeding cuda timer
 

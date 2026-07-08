@@ -19,6 +19,7 @@
 #include "traccc/device/container_d2h_copy_alg.hpp"
 #include "traccc/finding/combinatorial_kalman_filter_algorithm.hpp"
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
+#include "traccc/seeding/device/seeding_algorithm.hpp"
 #include "traccc/seeding/seeding_algorithm.hpp"
 #include "traccc/seeding/silicon_pixel_spacepoint_formation_algorithm.hpp"
 #include "traccc/seeding/track_params_estimation.hpp"
@@ -196,12 +197,19 @@ int seq_run(const traccc::opts::detector& detector_opts,
         mr, copy, traccc_queue, logger().clone("SyclMeasSortingAlg"));
     traccc::sycl::silicon_pixel_spacepoint_formation_algorithm sf_sycl(
         mr, copy, traccc_queue, logger().clone("SyclSpFormationAlg"));
-    traccc::sycl::triplet_seeding_algorithm sa_sycl(
-        seedfinder_config, spacepoint_grid_config, seedfilter_config, mr, copy,
-        traccc_queue, logger().clone("SyclSeedingAlg"));
-    traccc::sycl::gbts_seeding_algorithm gbts_sa_sycl(
-        gbts_config, mr, copy, traccc_queue,
-        logger().clone("SyclGbtsSeedingAlg"));
+    std::unique_ptr<const traccc::device::seeding_algorithm> seeding_alg;
+    if (usingGBTS) {
+        seeding_alg = std::make_unique<traccc::sycl::gbts_seeding_algorithm>(
+            gbts_config, mr, copy, traccc_queue,
+            logger().clone("SyclGbtsSeedingAlg"));
+    } else {
+        seeding_alg =
+            std::make_unique<traccc::sycl::triplet_seeding_algorithm>(
+                seedfinder_config, spacepoint_grid_config, seedfilter_config,
+                mr, copy, traccc_queue,
+                logger().clone("SyclTripletSeedingAlg"));
+    }
+    const traccc::device::seeding_algorithm& sa_sycl = *seeding_alg;
     traccc::sycl::seed_parameter_estimation_algorithm tp_sycl(
         track_params_estimation_config, mr, copy, traccc_queue,
         logger().clone("SyclTrackParEstAlg"));
@@ -304,12 +312,8 @@ int seq_run(const traccc::opts::detector& detector_opts,
             // SYCL
             {
                 traccc::performance::timer t("Seeding (sycl)", elapsedTimes);
-                if (usingGBTS) {
-                    seeds_sycl_buffer = gbts_sa_sycl(spacepoints_sycl_buffer,
-                                                     measurements_sycl_buffer);
-                } else {
-                    seeds_sycl_buffer = sa_sycl(spacepoints_sycl_buffer);
-                }
+                seeds_sycl_buffer = sa_sycl(spacepoints_sycl_buffer,
+                                            measurements_sycl_buffer);
                 vecmem_queue.synchronize();
             }  // stop measuring seeding sycl timer
 

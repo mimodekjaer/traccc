@@ -44,6 +44,7 @@
 #include "traccc/performance/container_comparator.hpp"
 #include "traccc/performance/soa_comparator.hpp"
 #include "traccc/performance/timer.hpp"
+#include "traccc/seeding/device/seeding_algorithm.hpp"
 #include "traccc/seeding/seeding_algorithm.hpp"
 #include "traccc/seeding/silicon_pixel_spacepoint_formation_algorithm.hpp"
 #include "traccc/seeding/track_params_estimation.hpp"
@@ -197,11 +198,18 @@ int seq_run(const traccc::opts::detector& detector_opts,
         mr, copy, queue, logger().clone("AlpakaMeasSortingAlg"));
     device_spacepoint_formation_algorithm sf_alpaka(
         mr, copy, queue, logger().clone("AlpakaSpFormationAlg"));
-    traccc::alpaka::triplet_seeding_algorithm sa_alpaka(
-        seedfinder_config, spacepoint_grid_config, seedfilter_config, mr, copy,
-        queue, logger().clone("AlpakaSeedingAlg"));
-    traccc::alpaka::gbts_seeding_algorithm gbts_sa_alpaka(
-        gbts_config, mr, copy, queue, logger().clone("AlpakaGbtsSeedingAlg"));
+    std::unique_ptr<const traccc::device::seeding_algorithm> seeding_alg;
+    if (usingGBTS) {
+        seeding_alg = std::make_unique<traccc::alpaka::gbts_seeding_algorithm>(
+            gbts_config, mr, copy, queue,
+            logger().clone("AlpakaGbtsSeedingAlg"));
+    } else {
+        seeding_alg =
+            std::make_unique<traccc::alpaka::triplet_seeding_algorithm>(
+                seedfinder_config, spacepoint_grid_config, seedfilter_config,
+                mr, copy, queue, logger().clone("AlpakaTripletSeedingAlg"));
+    }
+    const traccc::device::seeding_algorithm& sa_alpaka = *seeding_alg;
     traccc::alpaka::seed_parameter_estimation_algorithm tp_alpaka(
         track_params_estimation_config, mr, copy, queue,
         logger().clone("AlpakaTrackParEstAlg"));
@@ -309,12 +317,8 @@ int seq_run(const traccc::opts::detector& detector_opts,
             // Alpaka
             {
                 traccc::performance::timer t("Seeding (alpaka)", elapsedTimes);
-                if (usingGBTS) {
-                    seeds_alpaka_buffer = gbts_sa_alpaka(
-                        spacepoints_alpaka_buffer, measurements_alpaka_buffer);
-                } else {
-                    seeds_alpaka_buffer = sa_alpaka(spacepoints_alpaka_buffer);
-                }
+                seeds_alpaka_buffer = sa_alpaka(spacepoints_alpaka_buffer,
+                                                measurements_alpaka_buffer);
                 queue.synchronize();
             }  // stop measuring seeding alpaka timer
 

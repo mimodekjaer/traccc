@@ -54,7 +54,8 @@ triplet_seeding_algorithm::triplet_seeding_algorithm(
 triplet_seeding_algorithm::~triplet_seeding_algorithm() = default;
 
 auto triplet_seeding_algorithm::operator()(
-    const edm::spacepoint_collection::const_view& spacepoints) const
+    const edm::spacepoint_collection::const_view& spacepoints,
+    const edm::measurement_collection::const_view& /*measurements*/) const
     -> output_type {
 
     // A small sanity check.

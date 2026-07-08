@@ -14,13 +14,14 @@
 #include "traccc/edm/device/device_triplet.hpp"
 #include "traccc/edm/device/doublet_counter.hpp"
 #include "traccc/edm/device/triplet_counter.hpp"
+#include "traccc/seeding/device/seeding_algorithm.hpp"
 
 // Project include(s).
+#include "traccc/edm/measurement_collection.hpp"
 #include "traccc/edm/seed_collection.hpp"
 #include "traccc/edm/spacepoint_collection.hpp"
 #include "traccc/seeding/detail/seeding_config.hpp"
 #include "traccc/seeding/detail/spacepoint_grid.hpp"
-#include "traccc/utils/algorithm.hpp"
 #include "traccc/utils/memory_resource.hpp"
 #include "traccc/utils/messaging.hpp"
 
@@ -35,8 +36,7 @@ namespace traccc::device {
 /// synchronisation statement is required before destroying this buffer.
 ///
 class triplet_seeding_algorithm
-    : public algorithm<edm::seed_collection::buffer(
-          const edm::spacepoint_collection::const_view&)>,
+    : public seeding_algorithm,
       public messaging,
       public algorithm_base {
 
@@ -63,10 +63,13 @@ class triplet_seeding_algorithm
     /// Operator executing the algorithm.
     ///
     /// @param spacepoints is a view of all spacepoints in the event
+    /// @param measurements is a view of all measurements in the event
     /// @return the buffer of track seeds reconstructed from the spacepoints
     ///
     output_type operator()(const edm::spacepoint_collection::const_view&
-                               spacepoints) const override;
+                               spacepoints,
+                           const edm::measurement_collection::const_view&
+                               measurements) const override;
 
     protected:
     /// @name Function(s) to be implemented by derived classes
