@@ -169,8 +169,8 @@ auto gbts_seeding_algorithm::make_nodes(
     gbts_sort_nodes_kernel({nNodes, cfg.n_phi_bins, sp_params_buf,
                             node_eta_index_buf, node_phi_index_buf,
                             phi_cusums_buf, node_params_buf, node_phi_buf,
-                            node_index_buf, original_sp_idx_buf, tau_lut_buf,
-                            cfg.gbts_sort_nodes_params});
+                            node_index_buf, node_xyzw_buf, original_sp_idx_buf,
+                            tau_lut_buf, cfg.gbts_sort_nodes_params});
 
     vecmem::data::vector_buffer<unsigned int> eta_bin_views_buf(
         2 * cfg.n_eta_bins, mr().main);
