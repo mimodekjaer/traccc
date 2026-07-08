@@ -57,7 +57,7 @@ TRACCC_HOST_DEVICE inline void gbts_bin_spacepoints(
         if (sp.w < -CHAR_MAX) {
             continue;
         }
-        const unsigned short layerIdx = spacepointsLayer[globalIndex];
+        const unsigned int layerIdx = static_cast<unsigned int>(spacepointsLayer[globalIndex]);
         const unsigned int binedIdx =
             vecmem::device_atomic_ref<unsigned int>(layerCounts[layerIdx])
                 .fetch_sub(1) -
@@ -66,16 +66,15 @@ TRACCC_HOST_DEVICE inline void gbts_bin_spacepoints(
         sp_params[binedIdx] = sp;
 
         // --- Stage 2: node_eta_binning -----------
-        const unsigned int layerIdx_u = static_cast<unsigned int>(layerIdx);
         const std::pair<unsigned int, unsigned int> layerInfo =
-            d_layer_info[layerIdx_u];
+            d_layer_info[layerIdx];
         const unsigned int bin0 = layerInfo.first;
         const unsigned int num_eta_bins = layerInfo.second;
         unsigned int eta_index;
         if (num_eta_bins == 1u) {
             eta_index = bin0;
         } else {
-            const std::pair<float, float> layerGeo = d_layer_geo[layerIdx_u];
+            const std::pair<float, float> layerGeo = d_layer_geo[layerIdx];
             const float min_eta = layerGeo.first;
             const float eta_bin_width = layerGeo.second;
             const float r = math::sqrt(sp.x * sp.x + sp.y * sp.y);
