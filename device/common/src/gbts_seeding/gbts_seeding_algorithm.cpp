@@ -497,8 +497,8 @@ auto gbts_seeding_algorithm::extract_seeds(
 
     gbts_fit_segments_kernel(
         {nPaths, nTerminusEdges, cfg.max_num_neighbours, cfg.minLevel,
-         reducedSP, output_graph, path_store_buf, seed_proposals_buf,
-         edge_bids_buf, seed_ambiguity_buf,
+         node_xyzw, output_graph, path_store_buf, seed_proposals_buf,
+         edge_bids_buf, seed_ambiguity_buf, prop_hash_buf,
          d_counters + gbts_counter::nTerminusEdges,
          d_counters + gbts_counter::nProps, cfg.gbts_fit_segments_params,
          cfg.gbts_make_graph_edges_params.max_z0});
