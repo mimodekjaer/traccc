@@ -477,11 +477,7 @@ void gbts_seeding_algorithm::gbts_add_terminus_to_path_store_kernel(
     const device::gbts_add_terminus_to_path_store_payload& payload) const {
 
     const unsigned int n_threads = 128;
-    // The kernel also initialises the nPaths-sized prop_hash buffer.
-    const unsigned int n_items = (payload.nConnectedEdges > payload.nPaths)
-                                     ? payload.nConnectedEdges
-                                     : payload.nPaths;
-    const unsigned int n_blocks = 1 + (n_items - 1) / n_threads;
+    const unsigned int n_blocks = 1 + (payload.nConnectedEdges - 1) / n_threads;
     kernels::gbts_add_terminus_to_path_store<<<n_blocks, n_threads, 0,
                                                details::get_stream(stream())>>>(
         payload);

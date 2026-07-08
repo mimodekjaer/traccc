@@ -15,9 +15,6 @@
 // VecMem include(s).
 #include <vecmem/containers/data/vector_view.hpp>
 
-// System include(s).
-#include <cstdint>
-
 namespace traccc::device {
 
 /// (Global Event Data) Payload for the @c
@@ -25,28 +22,18 @@ namespace traccc::device {
 struct gbts_add_terminus_to_path_store_payload {
     /// Number of edges in the compacted graph
     unsigned int nConnectedEdges;
-    /// Number of path (= seed-proposal) slots
-    unsigned int nPaths;
     /// Output: per-path (edge index, parent path-store index or -1)
     /// entries; terminus rows occupy the first nTerminusEdges slots
     vecmem::data::vector_view<int2> path_store;
     /// Per-edge longest-outgoing-path summary from CCA
     vecmem::data::vector_view<const short2> outgoing_paths;
-    /// Output: per-proposal canonical-sort key, set to the 0xFF.. "unused"
-    /// sentinel here (gbts_fit_segments overwrites the used slots)
-    vecmem::data::vector_view<std::uint64_t> prop_hash;
-    /// Output: per-edge best-bid words, zeroed here for the bidding rounds
-    vecmem::data::vector_view<unsigned long long int> edge_bids;
 };
 
 /// @brief Seed the path store with one entry per terminus edge.
 ///
 /// Each thread inspects one edge; if it is a terminus (no live outgoing path),
 /// it writes a (parent = -1, edge) record into the path store, marking the
-/// root of a future path traversal. The same sweep also initialises the
-/// fit/bidding buffers (prop_hash to the 0xFF.. sentinel, edge_bids to zero),
-/// replacing two host-side memsets; both are first read by gbts_fit_segments,
-/// which runs later.
+/// root of a future path traversal.
 ///
 /// @param[in] thread_id Thread identifier for the kernel launch
 /// @param[in] payload   The global memory payload

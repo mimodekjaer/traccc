@@ -25,28 +25,14 @@ TRACCC_HOST_DEVICE inline void gbts_add_terminus_to_path_store(
     vecmem::device_vector<int2> d_path_store(payload.path_store);
     const vecmem::device_vector<const short2> d_outgoing_paths(
         payload.outgoing_paths);
-    vecmem::device_vector<std::uint64_t> d_prop_hash(payload.prop_hash);
-    vecmem::device_vector<unsigned long long int> d_edge_bids(
-        payload.edge_bids);
 
     const unsigned int globalIdx = thread_id.getGlobalThreadIdX();
     const unsigned int blockDimX = thread_id.getBlockDimX();
     const unsigned int gridDimX = thread_id.getGridDimX();
 
-    const unsigned int bound = (payload.nConnectedEdges > payload.nPaths)
-                                   ? payload.nConnectedEdges
-                                   : payload.nPaths;
-
-    for (unsigned int globalIndex = globalIdx; globalIndex < bound;
+    for (unsigned int globalIndex = globalIdx;
+         globalIndex < payload.nConnectedEdges;
          globalIndex += blockDimX * gridDimX) {
-
-        if (globalIndex < payload.nPaths) {
-            d_prop_hash[globalIndex] = 0xFFFFFFFFFFFFFFFFull;
-        }
-        if (globalIndex >= payload.nConnectedEdges) {
-            continue;
-        }
-        d_edge_bids[globalIndex] = 0;
 
         const short2 out_paths = d_outgoing_paths[globalIndex];
         if (out_paths.y == -1) {
