@@ -80,7 +80,9 @@ TRACCC_HOST_DEVICE inline void gbts_convert_seeds(
     const vecmem::device_vector<const int2> d_path_store(payload.path_store);
     const vecmem::device_vector<const unsigned int> d_output_graph(
         payload.output_graph);
-    const vecmem::device_vector<const float4> d_sp_params(payload.reducedSP);
+    const vecmem::device_vector<const float4> d_node_xyzw(payload.node_xyzw);
+    const vecmem::device_vector<const unsigned int> d_node_index(
+        payload.node_index);
     vecmem::device_vector<unsigned long long int> d_hit_bids(payload.hit_bids);
 
     const float dcurv_cut_m = payload.gbts_convert_seeds_params.dropout_dcurv_m;
@@ -132,15 +134,15 @@ TRACCC_HOST_DEVICE inline void gbts_convert_seeds(
         bool force_dropout = false;
         if (use_dropout) {
             std::array<traccc::float4, 3> sps = {
-                d_sp_params[seed.nodes[seed.size - 1]],
-                d_sp_params[seed.nodes[(seed.size - 1) / 2 + 1]],
-                d_sp_params[seed.nodes[0]]};
+                d_node_xyzw[seed.nodes[seed.size - 1]],
+                d_node_xyzw[seed.nodes[(seed.size - 1) / 2 + 1]],
+                d_node_xyzw[seed.nodes[0]]};
             const traccc::float2 curv_cot_1 =
                 detail::gbts_estimate_seed_params(sps);
-            sps[1] = d_sp_params[seed.nodes[(seed.size - 1) / 2]];
+            sps[1] = d_node_xyzw[seed.nodes[(seed.size - 1) / 2]];
             const traccc::float2 curv_cot_2 =
                 detail::gbts_estimate_seed_params(sps);
-            sps[0] = d_sp_params[seed.nodes[seed.size - 2]];
+            sps[0] = d_node_xyzw[seed.nodes[seed.size - 2]];
             const traccc::float2 curv_cot_3 =
                 detail::gbts_estimate_seed_params(sps);
             if ((best_for_hit < seed.size - 1) &
@@ -170,25 +172,30 @@ TRACCC_HOST_DEVICE inline void gbts_convert_seeds(
         // sample spacepoints from tracklet to create seeds
         // include 1st order unless either 2 or 3 are consitant with the other
         // and 1
+        // The tracklet nodes are sorted-node slots; the output seeds must
+        // carry the original spacepoint collection indices.
         if (((diff_code != 3) & (diff_code != 6)) | force_dropout) {
-            seeds_device.push_back({seed.nodes[seed.size - 1],
-                                    seed.nodes[(seed.size - 1) / 2 + 1],
-                                    seed.nodes[0], quality});
+            seeds_device.push_back(
+                {d_node_index[seed.nodes[seed.size - 1]],
+                 d_node_index[seed.nodes[(seed.size - 1) / 2 + 1]],
+                 d_node_index[seed.nodes[0]], quality});
         }
         // include 2nd order if it consistant with 1 and 3 or only 1 and 3 are
         // consistant
         if ((diff_code == 1) | (diff_code == 6)) {
-            seeds_device.push_back({seed.nodes[seed.size - 1],
-                                    seed.nodes[(seed.size - 1) / 2],
-                                    seed.nodes[0], quality});
+            seeds_device.push_back(
+                {d_node_index[seed.nodes[seed.size - 1]],
+                 d_node_index[seed.nodes[(seed.size - 1) / 2]],
+                 d_node_index[seed.nodes[0]], quality});
         }
         // include 3rd order if it is consistant with 1 and 2 or only 1 and 2
         // are consistant or if only 2 and 3 are consistant
         if ((diff_code == 2) | (diff_code == 3) | (diff_code == 4) |
             force_dropout) {
-            seeds_device.push_back({seed.nodes[seed.size - 2],
-                                    seed.nodes[(seed.size - 1) / 2],
-                                    seed.nodes[0], quality});
+            seeds_device.push_back(
+                {d_node_index[seed.nodes[seed.size - 2]],
+                 d_node_index[seed.nodes[(seed.size - 1) / 2]],
+                 d_node_index[seed.nodes[0]], quality});
         }
     }
 }

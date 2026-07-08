@@ -153,6 +153,8 @@ auto gbts_seeding_algorithm::make_nodes(
     copy().setup(node_phi_buf)->ignore();
     vecmem::data::vector_buffer<unsigned int> node_index_buf(nNodes, mr().main);
     copy().setup(node_index_buf)->ignore();
+    vecmem::data::vector_buffer<float4> node_xyzw_buf(nNodes, mr().main);
+    copy().setup(node_xyzw_buf)->ignore();
 
     // Optional tau LUT consumed by device::gbts_sort_nodes when
     // cfg.gbts_sort_nodes_params.useTauLUT is set. A size-1 dummy is allocated
@@ -187,7 +189,7 @@ auto gbts_seeding_algorithm::make_nodes(
     vecmem::vector<float> bin_rads(2 * cfg.n_eta_bins, mr().host);
     copy()(vecmem::get_data(bin_rads_buf), bin_rads)->wait();
 
-    return node_making_output{std::move(reducedSP_buf),
+    return node_making_output{std::move(node_xyzw_buf),
                               std::move(node_params_buf),
                               std::move(node_phi_buf),
                               std::move(node_index_buf),
@@ -205,7 +207,6 @@ auto gbts_seeding_algorithm::make_nodes(
 auto gbts_seeding_algorithm::create_edges(
     vecmem::data::vector_buffer<float4> node_params,
     vecmem::data::vector_buffer<float> node_phi,
-    vecmem::data::vector_buffer<unsigned int> node_index,
     const vecmem::vector<float>& bin_rads,
     const vecmem::vector<unsigned int>& eta_bin_views,
     const unsigned int nNodes,
@@ -372,7 +373,7 @@ auto gbts_seeding_algorithm::create_edges(
     const unsigned int nConnectedEdges =
         h_counters[gbts_counter::nConnectedEdges];
     TRACCC_DEBUG("found " << nConnectedEdges
-                            << " connected edges for seed extraction");
+                          << " connected edges for seed extraction");
     if (nConnectedEdges == 0) {
         TRACCC_WARNING("No connected edges were found");
         return graph_making_output{};
@@ -400,8 +401,9 @@ auto gbts_seeding_algorithm::create_edges(
 // Finally, disambiguate them by repeated seed-vs-edge bidding rounds.
 auto gbts_seeding_algorithm::extract_seeds(
     vecmem::data::vector_buffer<unsigned int>& output_graph,
-    vecmem::data::vector_buffer<float4>& reducedSP,
-    const unsigned int nConnectedEdges, const unsigned int nSp,
+    vecmem::data::vector_buffer<float4>& node_xyzw,
+    vecmem::data::vector_buffer<unsigned int>& node_index,
+    const unsigned int nConnectedEdges, const unsigned int nNodes,
     vecmem::data::vector_buffer<unsigned int>& counters_buf,
     vecmem::vector<unsigned int>& h_counters) const
     -> edm::seed_collection::buffer {
@@ -625,16 +627,17 @@ auto gbts_seeding_algorithm::operator()(
     // transients.
     graph_making_output graph = create_edges(
         std::move(nodes.node_params), std::move(nodes.node_phi),
-        std::move(nodes.node_index), nodes.bin_rads, nodes.eta_bin_views,
-        nodes.nNodes, counters_buf, h_counters);
+        nodes.bin_rads, nodes.eta_bin_views, nodes.nNodes, counters_buf,
+        h_counters);
     if (graph.nConnectedEdges == 0) {
         // No connected edges survived graph making -> no seeds.
         return {0, mr().main};
     }
 
     // Stage 3: Create seeds from the graph edges.
-    return extract_seeds(graph.output_graph, nodes.reducedSP,
-                         graph.nConnectedEdges, nSp, counters_buf, h_counters);
+    return extract_seeds(graph.output_graph, nodes.node_xyzw, nodes.node_index,
+                         graph.nConnectedEdges, nodes.nNodes, counters_buf,
+                         h_counters);
 }
 
 }  // namespace traccc::device

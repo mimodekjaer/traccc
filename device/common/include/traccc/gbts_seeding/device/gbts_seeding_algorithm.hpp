@@ -253,14 +253,15 @@ class gbts_seeding_algorithm
 
     /// Outputs of the node-making stage that are consumed downstream.
     struct node_making_output {
-        /// Reduced (x, y, z, w) per original spacepoint (used by seed
+        /// Raw spacepoint (x, y, z, w) per sorted-node slot (used by seed
         /// extraction)
-        vecmem::data::vector_buffer<float4> reducedSP;
+        vecmem::data::vector_buffer<float4> node_xyzw;
         /// Per-node (tau_min, tau_max, r, z) (used by graph making)
         vecmem::data::vector_buffer<float4> node_params;
         /// Per-node phi (used by graph making)
         vecmem::data::vector_buffer<float> node_phi;
-        /// Per-sorted-slot original spacepoint index (used by graph making)
+        /// Per-sorted-slot original spacepoint index (used by seed
+        /// extraction to map the output seeds back to collection indices)
         vecmem::data::vector_buffer<unsigned int> node_index;
         /// Per-eta (rmin, rmax) pair, host (used by graph making)
         vecmem::vector<float> bin_rads;
@@ -288,7 +289,6 @@ class gbts_seeding_algorithm
     graph_making_output create_edges(
         vecmem::data::vector_buffer<float4> node_params,
         vecmem::data::vector_buffer<float> node_phi,
-        vecmem::data::vector_buffer<unsigned int> node_index,
         const vecmem::vector<float>& bin_rads,
         const vecmem::vector<unsigned int>& eta_bin_views,
         const unsigned int nNodes,
@@ -298,8 +298,9 @@ class gbts_seeding_algorithm
     /// Stage 3: run the CCA, extract paths, fit and disambiguate into seeds.
     edm::seed_collection::buffer extract_seeds(
         vecmem::data::vector_buffer<unsigned int>& output_graph,
-        vecmem::data::vector_buffer<float4>& reducedSP,
-        const unsigned int nConnectedEdges, const unsigned int nSp,
+        vecmem::data::vector_buffer<float4>& node_xyzw,
+        vecmem::data::vector_buffer<unsigned int>& node_index,
+        const unsigned int nConnectedEdges, const unsigned int nNodes,
         vecmem::data::vector_buffer<unsigned int>& counters_buf,
         vecmem::vector<unsigned int>& h_counters) const;
 

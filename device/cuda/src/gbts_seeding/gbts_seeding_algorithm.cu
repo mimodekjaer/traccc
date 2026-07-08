@@ -11,6 +11,7 @@
 #include "../utils/thread_id.hpp"
 #include "../utils/utils.hpp"
 #include "traccc/cuda/gbts_seeding/gbts_seeding_algorithm.hpp"
+#include "traccc/utils/logging.hpp"
 
 // Project include(s).
 #include "traccc/gbts_seeding/device/gbts_add_terminus_to_path_store.hpp"
@@ -36,15 +37,25 @@
 #include "traccc/gbts_seeding/gbts_types.hpp"
 
 // VecMem include(s).
+#include <vecmem/containers/data/vector_buffer.hpp>
 #include <vecmem/containers/data/vector_view.hpp>
 
 // System include(s).
 #include <algorithm>
+#include <cstdint>
 #include <memory_resource>
 
 // Thrust include(s).
+#include <thrust/copy.h>
 #include <thrust/execution_policy.h>
+#include <thrust/functional.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/reduce.h>
 #include <thrust/scan.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/sort.h>
+#include <thrust/tuple.h>
 
 namespace traccc::cuda {
 
@@ -79,17 +90,22 @@ __global__ void gbts_count_eta_phi_bins(
     device::gbts_count_eta_phi_bins(details::thread_id1{}, payload);
 }
 
-/// CUDA kernel for running @c traccc::device::gbts_prefix_sum_eta_phi_bins
-__global__ void gbts_prefix_sum_eta_phi_bins(
-    const device::gbts_prefix_sum_eta_phi_bins_payload payload) {
+/// CUDA kernel for running @c traccc::device::gbts_fill_sort_keys
+__global__ void gbts_fill_sort_keys(
+    const device::gbts_sort_nodes_payload payload,
+    vecmem::data::vector_view<std::uint64_t> keys_view,
+    vecmem::data::vector_view<unsigned int> perm_view) {
 
-    device::gbts_prefix_sum_eta_phi_bins(details::thread_id1{}, payload);
+    device::gbts_fill_sort_keys(details::thread_id1{}, payload, keys_view,
+                                perm_view);
 }
 
-/// CUDA kernel for running @c traccc::device::gbts_sort_nodes
-__global__ void gbts_sort_nodes(const device::gbts_sort_nodes_payload payload) {
+/// CUDA kernel for running @c traccc::device::gbts_gather_sorted_nodes
+__global__ void gbts_gather_sorted_nodes(
+    const device::gbts_sort_nodes_payload payload,
+    vecmem::data::vector_view<unsigned int> perm_view) {
 
-    device::gbts_sort_nodes(details::thread_id1{}, payload);
+    device::gbts_gather_sorted_nodes(details::thread_id1{}, payload, perm_view);
 }
 
 /// CUDA kernel for running @c traccc::device::gbts_find_minmax_radius
@@ -301,14 +317,14 @@ void gbts_seeding_algorithm::gbts_count_eta_phi_bins_kernel(
 }
 
 void gbts_seeding_algorithm::gbts_prefix_sum_eta_phi_bins_kernel(
-    const device::gbts_prefix_sum_eta_phi_bins_payload& payload) const {
+    const device::gbts_prefix_sum_eta_phi_bins_payload&) const {
 
-    const unsigned int n_threads = 128;
-    const unsigned int n_blocks = 1 + (payload.nEtaBins - 1) / n_threads;
-    kernels::gbts_prefix_sum_eta_phi_bins<<<n_blocks, n_threads, 0,
-                                            details::get_stream(stream())>>>(
-        payload);
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());  //
+    // No-op on CUDA: phi_cusums is consumed only by the atomic
+    // device::gbts_sort_nodes path, which CUDA does not launch (its sort uses
+    // gbts_fill_sort_keys + thrust::sort_by_key + gbts_gather_sorted_nodes, none
+    // of which read phi_cusums). The shared orchestrator still calls this so the
+    // other backends -- which do read phi_cusums via
+    // device::gbts_prefix_sum_eta_phi_bins -- stay correct.
 }
 
 void gbts_seeding_algorithm::gbts_sort_nodes_kernel(
@@ -316,8 +332,40 @@ void gbts_seeding_algorithm::gbts_sort_nodes_kernel(
 
     const unsigned int n_threads = 256;
     const unsigned int n_blocks = 1 + (payload.nNodes - 1) / n_threads;
-    kernels::gbts_sort_nodes<<<n_blocks, n_threads, 0,
-                               details::get_stream(stream())>>>(payload);
+
+    // Deterministic replacement for the old atomic scatter: build the per-node
+    // histo_bin key + identity permutation, sort the permutation by
+    // (histo_bin, spacepoint position), then gather the geometry tuples into the
+    // sorted slots. The within-bin tie-break is the spacepoint (x, y, z) -- a
+    // stable per-spacepoint identity -- so the node order (and hence
+    // make_graph_edges) is reproducible regardless of the race-ordered
+    // spacepoint collection / layer scatter upstream. The 24-byte geometry tuple
+    // is recomputed in the gather; only the 4-byte permutation index moves.
+    //
+    // keys_buf / perm_buf are stream-ordered scratch: every kernel and the sort
+    // are enqueued on the single algorithm stream, so although the buffers are
+    // destroyed when this method returns (par_nosync), any later reuse of their
+    // pages is stream-ordered after the gather -> no race, no extra sync.
+    vecmem::data::vector_buffer<std::uint64_t> keys_buf(payload.nNodes,
+                                                        mr().main);
+    copy().setup(keys_buf)->ignore();
+    vecmem::data::vector_buffer<unsigned int> perm_buf(payload.nNodes,
+                                                       mr().main);
+    copy().setup(perm_buf)->ignore();
+
+    kernels::gbts_fill_sort_keys<<<n_blocks, n_threads, 0,
+                                   details::get_stream(stream())>>>(
+        payload, keys_buf, perm_buf);
+    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());  //
+
+    thrust::sort_by_key(
+        thrust::cuda::par_nosync(std::pmr::polymorphic_allocator(&(mr().main)))
+            .on(details::get_stream(stream())),
+        keys_buf.ptr(), keys_buf.ptr() + payload.nNodes, perm_buf.ptr());
+
+    kernels::gbts_gather_sorted_nodes<<<n_blocks, n_threads, 0,
+                                        details::get_stream(stream())>>>(
+        payload, perm_buf);
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());  //
 }
 

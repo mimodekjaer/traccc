@@ -36,8 +36,11 @@ struct gbts_convert_seeds_payload {
     vecmem::data::vector_view<const int2> path_store;
     /// Compacted graph from gbts_compress_graph
     vecmem::data::vector_view<const unsigned int> output_graph;
-    /// Reduced (x, y, z, r) per original spacepoint
-    vecmem::data::vector_view<const float4> reducedSP;
+    /// Raw spacepoint (x, y, z, w) per sorted-node slot
+    vecmem::data::vector_view<const float4> node_xyzw;
+    /// Sorted-node slot to original spacepoint (collection) index map; the
+    /// output seeds must carry collection indices for downstream consumers
+    vecmem::data::vector_view<const unsigned int> node_index;
     /// Output: 3-SP seeds appended to this resizable buffer
     edm::seed_collection::view output_seeds;
     /// Per-hit highest-bidder seed (read for dropout decisions)
