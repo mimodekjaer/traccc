@@ -226,25 +226,11 @@ __global__ void gbts_reset_edge_bids(
     device::gbts_reset_edge_bids(details::thread_id1{}, payload);
 }
 
-/// CUDA kernel for running @c traccc::device::gbts_rebid_promote_seeds
-__global__ void gbts_rebid_promote_seeds(
-    const device::gbts_rebid_seeds_for_edges_payload payload) {
-
-    device::gbts_rebid_promote_seeds(details::thread_id1{}, payload);
-}
-
 /// CUDA kernel for running @c traccc::device::gbts_rebid_seeds_for_edges
 __global__ void gbts_rebid_seeds_for_edges(
     const device::gbts_rebid_seeds_for_edges_payload payload) {
 
     device::gbts_rebid_seeds_for_edges(details::thread_id1{}, payload);
-}
-
-/// CUDA kernel for running @c traccc::device::gbts_mark_rebid_losers
-__global__ void gbts_mark_rebid_losers(
-    const device::gbts_rebid_seeds_for_edges_payload payload) {
-
-    device::gbts_mark_rebid_losers(details::thread_id1{}, payload);
 }
 
 /// CUDA kernel for running @c traccc::device::gbts_bid_seeds_for_hits
@@ -566,24 +552,9 @@ void gbts_seeding_algorithm::gbts_rebid_seeds_for_edges_kernel(
 
     const unsigned int n_threads = 128;
     const unsigned int n_blocks = 1 + (payload.nProps - 1) / n_threads;
-    // Pass A: promote/reject and initialise the bidders' ambiguity to 0 (each
-    // thread writes only its own slot). The kernel boundary guarantees this
-    // completes before any loser-marking in the bid pass.
-    kernels::gbts_rebid_promote_seeds<<<n_blocks, n_threads, 0,
-                                        details::get_stream(stream())>>>(
-        payload);
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
-    // Pass B1: the flagged proposals place their bids (fetch_max only, no
-    // marking).
     kernels::gbts_rebid_seeds_for_edges<<<n_blocks, n_threads, 0,
                                           details::get_stream(stream())>>>(
         payload);
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
-    // Pass B2: with the bids settled, each active proposal derives its own
-    // won/lost state from the final per-edge maxima (own-slot writes only), so
-    // the round's outcome is independent of atomic ordering.
-    kernels::gbts_mark_rebid_losers<<<n_blocks, n_threads, 0,
-                                      details::get_stream(stream())>>>(payload);
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());
 }
 

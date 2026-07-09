@@ -33,33 +33,11 @@ struct gbts_rebid_seeds_for_edges_payload {
     vecmem::data::vector_view<unsigned long long int> edge_bids;
     /// In/out: per-seed-proposal ambiguity tag
     vecmem::data::vector_view<char> seed_ambiguity;
-    /// Out (promote pass) / in (bid pass): per-proposal flag marking the
-    /// proposals that bid this round. Written by gbts_rebid_promote_seeds and
-    /// read by gbts_rebid_seeds_for_edges, so the bid pass never reads the
-    /// ambiguity it is concurrently marking.
-    vecmem::data::vector_view<char> bid_active;
     /// In/out: global atomic counter of rejected proposals
     unsigned int* nRejectedPropsCounter;
     /// True on the first bidding round (folds the init pass)
     bool first_round;
 };
-
-/// @brief Promote/reject pass run before @c gbts_rebid_seeds_for_edges.
-///
-/// Decides, per proposal, whether it bids this round: it sets bid_active and
-/// initialises that proposal's ambiguity to 0 (so the subsequent bid pass only
-/// ever writes the -1 loser marks, never the 0 init -- removing the init/mark
-/// race). On the first round it also rejects (-2) and counts the proposals that
-/// lost their depth-1 bid. State transitions are identical to the original
-/// fused kernel; only the init is separated into this pass.
-///
-/// @param[in] thread_id Thread identifier for the kernel launch
-/// @param[in] payload   The global memory payload
-///
-template <concepts::thread_id1 thread_id_t>
-TRACCC_HOST_DEVICE inline void gbts_rebid_promote_seeds(
-    const thread_id_t& thread_id,
-    const gbts_rebid_seeds_for_edges_payload& payload);
 
 /// @brief Have one surviving seed re-bid for every edge along its path.
 ///
@@ -72,22 +50,6 @@ TRACCC_HOST_DEVICE inline void gbts_rebid_promote_seeds(
 ///
 template <concepts::thread_id1 thread_id_t>
 TRACCC_HOST_DEVICE inline void gbts_rebid_seeds_for_edges(
-    const thread_id_t& thread_id,
-    const gbts_rebid_seeds_for_edges_payload& payload);
-
-/// @brief Mark the active proposals that lost their (settled) re-bid.
-///
-/// Runs after @c gbts_rebid_seeds_for_edges has completed (kernel boundary):
-/// each active proposal checks whether its own bid is the final maximum on
-/// every edge of its chain and sets its own ambiguity to -1 if it was outbid
-/// anywhere. Own-slot writes only, so the round's outcome is a pure function
-/// of the settled bids, independent of any atomic ordering.
-///
-/// @param[in] thread_id Thread identifier for the kernel launch
-/// @param[in] payload   The global memory payload
-///
-template <concepts::thread_id1 thread_id_t>
-TRACCC_HOST_DEVICE inline void gbts_mark_rebid_losers(
     const thread_id_t& thread_id,
     const gbts_rebid_seeds_for_edges_payload& payload);
 
