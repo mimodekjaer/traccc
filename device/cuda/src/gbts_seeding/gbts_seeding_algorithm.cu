@@ -205,20 +205,6 @@ __global__ void gbts_fit_segments(
     device::gbts_fit_segments(details::thread_id1{}, payload);
 }
 
-/// CUDA kernel for running @c traccc::device::gbts_bid_canonical_proposals
-__global__ void gbts_bid_canonical_proposals(
-    const device::gbts_fit_segments_payload payload) {
-
-    device::gbts_bid_canonical_proposals(details::thread_id1{}, payload);
-}
-
-/// CUDA kernel for running @c traccc::device::gbts_mark_canonical_losers
-__global__ void gbts_mark_canonical_losers(
-    const device::gbts_fit_segments_payload payload) {
-
-    device::gbts_mark_canonical_losers(details::thread_id1{}, payload);
-}
-
 /// CUDA kernel for running @c traccc::device::gbts_reset_edge_bids
 __global__ void gbts_reset_edge_bids(
     const device::gbts_reset_edge_bids_payload payload) {
@@ -477,11 +463,7 @@ void gbts_seeding_algorithm::gbts_add_terminus_to_path_store_kernel(
     const device::gbts_add_terminus_to_path_store_payload& payload) const {
 
     const unsigned int n_threads = 128;
-    // The kernel also initialises the nPaths-sized prop_hash buffer.
-    const unsigned int n_items = (payload.nConnectedEdges > payload.nPaths)
-                                     ? payload.nConnectedEdges
-                                     : payload.nPaths;
-    const unsigned int n_blocks = 1 + (n_items - 1) / n_threads;
+    const unsigned int n_blocks = 1 + (payload.nConnectedEdges - 1) / n_threads;
     kernels::gbts_add_terminus_to_path_store<<<n_blocks, n_threads, 0,
                                                details::get_stream(stream())>>>(
         payload);
@@ -509,45 +491,8 @@ void gbts_seeding_algorithm::gbts_fit_segments_kernel(
 
     const unsigned int n_threads = 128;
     const unsigned int n_blocks = 1 + (payload.nPaths - 1) / n_threads;
-
-    // 1. Fit + create proposals at (race) slots, each tagged with a
-    //    deterministic hash of its path's node indices. No bid yet.
     kernels::gbts_fit_segments<<<n_blocks, n_threads, 0,
                                  details::get_stream(stream())>>>(payload);
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());  //
-
-    // 2. Sort proposals by that hash so the proposal index (the bid tie-break)
-    //    is canonical/reproducible. Unused slots carry a 0xFF.. sentinel hash
-    //    and sort to the back. edge_bids was already zeroed by the orchestrator,
-    //    and seed_ambiguity is (re)set per proposal inside the bid, so no extra
-    //    reset is needed.
-    const auto policy =
-        thrust::cuda::par_nosync(std::pmr::polymorphic_allocator(&(mr().main)))
-            .on(details::get_stream(stream()));
-    const unsigned int n = payload.nPaths;
-
-    // Sort the proposals directly by their deterministic key. sort_by_key carries
-    // the int2 proposals under the (cub stable-radix) key permutation, so prop_hash
-    // ends sorted (0xFF.. sentinels at the back) and seed_proposals is reordered
-    // identically -- exactly what gbts_bid_canonical_proposals consumes (prop_hash[c]
-    // sentinel test + aligned seed_proposals[c]). One op, no scratch; bit-identical
-    // to the old sequence + sort_by_key(perm) + gather + copy.
-    thrust::sort_by_key(policy, payload.prop_hash.ptr(),
-                        payload.prop_hash.ptr() + n,
-                        payload.seed_proposals.ptr());
-
-    // 3. Depth-1 bid on the canonical proposal order (bid-only; no marking).
-    kernels::gbts_bid_canonical_proposals<<<n_blocks, n_threads, 0,
-                                            details::get_stream(stream())>>>(
-        payload);
-    TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());  //
-
-    // 4. With the bids settled, each proposal derives its own won/lost state
-    //    from the final per-edge maxima (own-slot writes only) -- the outcome
-    //    is a pure function of the bid set, independent of atomic ordering.
-    kernels::gbts_mark_canonical_losers<<<n_blocks, n_threads, 0,
-                                          details::get_stream(stream())>>>(
-        payload);
     TRACCC_CUDA_ERROR_CHECK(cudaGetLastError());  //
 }
 

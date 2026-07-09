@@ -12,7 +12,6 @@
 #include "traccc/definitions/qualifiers.hpp"
 #include "traccc/device/concepts/thread_id.hpp"
 #include "traccc/gbts_seeding/device/details/gbts_create_seed_candidate.hpp"
-#include "traccc/gbts_seeding/device/details/gbts_sort_keys.hpp"
 #include "traccc/gbts_seeding/gbts_seeding_config.hpp"
 #include "traccc/gbts_seeding/gbts_types.hpp"
 
@@ -261,9 +260,6 @@ TRACCC_HOST_DEVICE inline void gbts_fit_segments(
     const vecmem::device_vector<const unsigned int> d_output_graph(
         payload.output_graph);
     const vecmem::device_vector<const int2> d_path_store(payload.path_store);
-    vecmem::device_vector<int2> d_seed_proposals(payload.seed_proposals);
-    vecmem::device_vector<char> d_seed_ambiguity(payload.seed_ambiguity);
-    vecmem::device_vector<std::uint64_t> d_prop_hash(payload.prop_hash);
 
     const gbts_fit_segments_params& fit_params =
         payload.gbts_fit_segments_params;
@@ -301,47 +297,21 @@ TRACCC_HOST_DEVICE inline void gbts_fit_segments(
                            gbts_consts::node2];
         traccc::float4 node2 = d_node_xyzw[nodeidx2];
 
-        // Deterministic per-path key: FNV-1a hash over the FULL chain's node
-        // INDICES (sorted-node slots: the (eta-phi bin, phi) node sort is
-        // geometric, so the slots are reproducible regardless of the
-        // race-ordered spacepoint collection and layer scatter upstream,
-        // modulo exact phi-bit ties within a bin). Two distinct path-store
-        // chains always differ within the folded index sequence, so the key
-        // is injective per proposal and the canonical sort below has no
-        // ties. The fold must cover the whole chain -- NOT just the fitted
-        // prefix: the bidding/reset/convert stages walk the full chain, and
-        // two chains sharing their prefix up to a Kalman break would
-        // otherwise get equal keys (equal quality too) and fall back to the
-        // race-ordered proposal slots while behaving differently downstream.
-        std::uint64_t hash = details::fnv_offset_basis;
-        hash = details::hash_u32(hash, nodeidx1);
-        hash = details::hash_u32(hash, nodeidx2);
-
         state1.initialize(node2, node1);
-        bool fitting = true;
         while (path.y >= 0) {
             path = d_path_store[static_cast<unsigned int>(path.y)];
-            const unsigned int n2idx =
-                d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
-                               gbts_consts::node2];
-            hash = details::hash_u32(hash, n2idx);
-            if (!fitting) {
-                // fit ended at the break point; keep folding the rest of the
-                // chain into the key
-                continue;
-            }
-            node2 = d_node_xyzw[n2idx];
+            node2 = d_node_xyzw
+                [d_output_graph[edge_size * static_cast<unsigned int>(path.x) +
+                                gbts_consts::node2]];
             if (toggle) {
                 if (!details::gbts_kalman_update(&state1, &state2, node2,
                                                  fit_params, max_z0)) {
                     state1 = state2;
-                    fitting = false;
-                    continue;
+                    break;
                 }
             } else if (!details::gbts_kalman_update(&state2, &state1, node2,
                                                     fit_params, max_z0)) {
-                fitting = false;
-                continue;
+                break;
             }
             toggle = !toggle;
             length++;
@@ -358,70 +328,9 @@ TRACCC_HOST_DEVICE inline void gbts_fit_segments(
         const unsigned int prop_idx =
             vecmem::device_atomic_ref<unsigned int>(*payload.nPropsCounter)
                 .fetch_add(1u);
-        // Store the proposal at a (race) slot together with its deterministic
-        // key. The canonical proposal order and the depth-1 bid are applied
-        // afterwards in the launcher (sort by prop_hash -> canonical prop_idx),
-        // so the greedy bid resolution becomes reproducible.
-        if (hash == 0xFFFFFFFFFFFFFFFFull) {
-            // Never collide with the "unused slot" sentinel, which would sort
-            // this proposal into the sentinel block and silently drop it.
-            hash -= 1u;
-        }
-        d_seed_proposals[prop_idx] = int2{qual, static_cast<int>(path_idx)};
-        d_seed_ambiguity[prop_idx] = 0;
-        d_prop_hash[prop_idx] = hash;
-    }
-}
-
-template <concepts::thread_id1 thread_id_t>
-TRACCC_HOST_DEVICE inline void gbts_bid_canonical_proposals(
-    const thread_id_t& thread_id, const gbts_fit_segments_payload& payload) {
-
-    vecmem::device_vector<int2> d_seed_proposals(payload.seed_proposals);
-    vecmem::device_vector<std::uint64_t> d_prop_hash(payload.prop_hash);
-
-    const unsigned int globalIdx = thread_id.getGlobalThreadIdX();
-    const unsigned int blockDimX = thread_id.getBlockDimX();
-    const unsigned int gridDimX = thread_id.getGridDimX();
-
-    for (unsigned int c = globalIdx; c < payload.nPaths;
-         c += blockDimX * gridDimX) {
-        if (d_prop_hash[c] == 0xFFFFFFFFFFFFFFFFull) {
-            continue;  // unused (sentinel) slot
-        }
-        const int2 prop = d_seed_proposals[c];
-        details::gbts_place_seed_bid(prop.x, prop.y, c, payload.edge_bids,
-                                     payload.path_store, 1);
-    }
-}
-
-template <concepts::thread_id1 thread_id_t>
-TRACCC_HOST_DEVICE inline void gbts_mark_canonical_losers(
-    const thread_id_t& thread_id, const gbts_fit_segments_payload& payload) {
-
-    const vecmem::device_vector<const int2> d_seed_proposals(
-        payload.seed_proposals);
-    const vecmem::device_vector<const std::uint64_t> d_prop_hash(
-        payload.prop_hash);
-    vecmem::device_vector<char> d_seed_ambiguity(payload.seed_ambiguity);
-
-    const unsigned int globalIdx = thread_id.getGlobalThreadIdX();
-    const unsigned int blockDimX = thread_id.getBlockDimX();
-    const unsigned int gridDimX = thread_id.getGridDimX();
-
-    for (unsigned int c = globalIdx; c < payload.nPaths;
-         c += blockDimX * gridDimX) {
-        if (d_prop_hash[c] == 0xFFFFFFFFFFFFFFFFull) {
-            continue;  // unused (sentinel) slot
-        }
-        const int2 prop = d_seed_proposals[c];
-        // The bids are settled (kernel boundary), so each proposal derives its
-        // own won/lost state from the final per-edge maxima -- own-slot writes
-        // only, no cross-thread marking.
-        if (!details::gbts_seed_bid_won(prop.x, prop.y, c, payload.edge_bids,
-                                        payload.path_store, 1)) {
-            d_seed_ambiguity[c] = -1;
-        }
+        details::gbts_create_seed_candidate(
+            qual, static_cast<int>(path_idx), prop_idx, payload.seed_ambiguity,
+            payload.seed_proposals, payload.edge_bids, payload.path_store, 1);
     }
 }
 

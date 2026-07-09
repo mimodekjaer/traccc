@@ -45,10 +45,6 @@ struct gbts_fit_segments_payload {
     vecmem::data::vector_view<unsigned long long int> edge_bids;
     /// Output: per-seed-proposal ambiguity tag (multi-bid resolution flag)
     vecmem::data::vector_view<char> seed_ambiguity;
-    /// Output: per-seed-proposal deterministic key (hash of the path's node
-    /// indices) used to assign a canonical, reproducible proposal order before
-    /// bidding. Unused slots are left at their pre-set 0xFF... sentinel.
-    vecmem::data::vector_view<std::uint64_t> prop_hash;
     /// Read-only upper bound on path indices (set by earlier kernels)
     unsigned int* nPathStoreSize;
     /// In/out: global atomic counter of accepted seed proposals
@@ -72,33 +68,6 @@ struct gbts_fit_segments_payload {
 ///
 template <concepts::thread_id1 thread_id_t>
 TRACCC_HOST_DEVICE inline void gbts_fit_segments(
-    const thread_id_t& thread_id, const gbts_fit_segments_payload& payload);
-
-/// @brief Perform the depth-1 seed bid on the canonical proposal order.
-///
-/// Runs after the proposals have been sorted by their deterministic per-path
-/// hash, so the greedy bid resolution -- and hence the seed count -- is
-/// reproducible. Slots left at the 0xFF... sentinel hash are unused and skipped.
-///
-/// @param[in] thread_id Thread identifier for the kernel launch
-/// @param[in] payload   The global memory payload
-///
-template <concepts::thread_id1 thread_id_t>
-TRACCC_HOST_DEVICE inline void gbts_bid_canonical_proposals(
-    const thread_id_t& thread_id, const gbts_fit_segments_payload& payload);
-
-/// @brief Mark the proposals that lost their (settled) depth-1 bid.
-///
-/// Runs after @c gbts_bid_canonical_proposals has completed (kernel boundary):
-/// each proposal checks the final best bid on its leaf edge and sets its own
-/// ambiguity to -1 if it was outbid. Own-slot writes only, so the outcome is a
-/// pure function of the settled bids, independent of any atomic ordering.
-///
-/// @param[in] thread_id Thread identifier for the kernel launch
-/// @param[in] payload   The global memory payload
-///
-template <concepts::thread_id1 thread_id_t>
-TRACCC_HOST_DEVICE inline void gbts_mark_canonical_losers(
     const thread_id_t& thread_id, const gbts_fit_segments_payload& payload);
 
 }  // namespace traccc::device
